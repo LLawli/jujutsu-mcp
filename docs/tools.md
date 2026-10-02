@@ -80,7 +80,9 @@ never allows.
 its result opens with `commits to sign: N`. With `dry_run: true` it stops
 there, so an agent can warn the user before a push that asks for one
 security-key touch per commit. Pushing a bookmark the remote lacks creates it
-there; naming a bookmark that does not exist locally is an error before
+there, unless jj refuses because the bookmark is not tracked on that remote;
+the agent then tracks it with `run` (`bookmark track NAME@REMOTE`) and pushes
+again. Naming a bookmark that does not exist locally is an error before
 anything is pushed.
 
 Both send MCP progress notifications while jj runs, when the client asks for

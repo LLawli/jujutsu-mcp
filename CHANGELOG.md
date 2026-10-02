@@ -10,6 +10,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - The `commits to sign: N` line of `git_push` ends with a newline, so it no
   longer runs into jj's output in clients that join content blocks.
+- The `bookmarks` description of `git_push` no longer promises that a
+  missing bookmark is always created on the remote: jj refuses on a remote
+  that does not track it, and the description says how to track it.
 
 ## [0.1.2] - 2026-10-02
 

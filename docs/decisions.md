@@ -148,6 +148,14 @@ Each commit signed on push asks for a YubiKey touch. Codex cuts MCP tools at
   subtracted the `git` remote's commits from every remote's, which dropped a
   synced trunk from the exclusion and counted all of it (23 announced, 16
   signed).
+- `git_push` does not track bookmarks for the agent. jj 0.45.1 refuses to
+  create a bookmark on a remote that does not track it ("Refusing to create
+  new remote bookmark", with a `jj bookmark track NAME@REMOTE` hint) and has
+  no push flag to skip that (`--allow-new` is gone). Tracking inside the tool
+  would make `dry_run` change state, and a tracked bookmark follows the
+  remote on later fetches, which the user did not ask for. The parameter
+  description says so, and the agent tracks with `run` (measured in an
+  end-to-end run: one failed dry run, one `run`, then the push).
 - Reopen if: jj changes which commits it signs on push (watch
   `sign_commits_before_push` across releases), or `mine()` / `signed()`
   stop matching its author and signature checks.

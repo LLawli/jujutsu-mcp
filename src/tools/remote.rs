@@ -39,8 +39,10 @@ pub struct GitFetchParams {
 pub struct GitPushParams {
     /// Absolute path of the repository or any directory inside it.
     pub repo: String,
-    /// Bookmarks to push; a bookmark the remote does not have yet is
-    /// created there.
+    /// Bookmarks to push. A bookmark the remote does not have yet is created
+    /// there when jj allows it; on a remote the bookmark is not tracked on,
+    /// jj refuses ("Refusing to create new remote bookmark"): track it with
+    /// `run` `["bookmark", "track", "NAME@REMOTE"]`, then push again.
     #[serde(default)]
     pub bookmarks: Vec<String>,
     /// Push these revisions under generated bookmark names.
