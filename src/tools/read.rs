@@ -100,6 +100,7 @@ pub struct ShowParams {
     /// Revision to show. Defaults to the working-copy commit `@`.
     #[serde(default)]
     pub revision: Option<String>,
+    /// Diff rendering. Defaults to jj's configured format.
     #[serde(default)]
     pub format: Option<DiffFormat>,
 }
@@ -122,6 +123,7 @@ pub struct DiffParams {
     /// no fileset syntax or globs.
     #[serde(default)]
     pub paths: Vec<String>,
+    /// Diff rendering. Defaults to jj's configured format.
     #[serde(default)]
     pub format: Option<DiffFormat>,
 }
@@ -328,8 +330,8 @@ impl JjServer {
         Ok(Json(BookmarkListOutput { bookmarks }))
     }
 
-    /// Operation log, newest first, as structured JSON. Operation ids feed
-    /// `undo`.
+    /// Operation log, newest first, as structured JSON: what each jj command
+    /// did to the repository. `undo` reverts the latest operation.
     #[tool(annotations(read_only_hint = true, open_world_hint = false))]
     pub async fn op_log(
         &self,

@@ -28,6 +28,7 @@ pub struct NewParams {
     /// Parents of the new commit; several make a merge. Defaults to `@`.
     #[serde(default)]
     pub parents: Vec<String>,
+    /// Description of the new commit. Defaults to none.
     #[serde(default)]
     pub message: Option<String>,
 }
@@ -36,6 +37,7 @@ pub struct NewParams {
 pub struct CommitParams {
     /// Absolute path of the repository or any directory inside it.
     pub repo: String,
+    /// Description of the commit being closed.
     pub message: String,
     /// Commit only these paths (relative to `repo`, taken literally); the
     /// rest stays in the new working-copy commit. Defaults to everything.
@@ -64,6 +66,7 @@ pub struct SquashParams {
     /// `use_destination_message` is set.
     #[serde(default)]
     pub message: Option<String>,
+    /// Keep the destination's description and drop the source's.
     #[serde(default)]
     pub use_destination_message: bool,
     /// Keep the source commit even if it becomes empty.
@@ -114,8 +117,12 @@ pub struct RebaseParams {
     /// New parents. Exactly one of `onto`, `insert_after`, `insert_before`.
     #[serde(default)]
     pub onto: Option<String>,
+    /// Insert the rebased revisions after these, between them and their
+    /// children.
     #[serde(default)]
     pub insert_after: Option<String>,
+    /// Insert the rebased revisions before these, between them and their
+    /// parents.
     #[serde(default)]
     pub insert_before: Option<String>,
     /// Abandon commits that become empty.
