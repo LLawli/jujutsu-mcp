@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{TestRepo, call, call_ok, call_tool_error, text_of};
+use common::{TestRepo, call_ok, call_text, call_tool_error};
 use serde_json::{Value, json};
 
 /// first (a.txt) <- second (b.txt, bookmark `feat`) <- @ (edits a.txt,
@@ -21,14 +21,6 @@ fn repo_with_history() -> TestRepo {
     repo
 }
 
-async fn text_ok(client: &common::Client, tool: &'static str, arguments: Value) -> String {
-    let result = call(client, tool, arguments)
-        .await
-        .unwrap_or_else(|err| panic!("{tool} protocol error: {err:?}"));
-    assert_ne!(result.is_error, Some(true), "{tool} failed: {result:?}");
-    text_of(&result)
-}
-
 fn lines(text: &str) -> Vec<&str> {
     let mut lines: Vec<&str> = text.lines().filter(|l| !l.is_empty()).collect();
     lines.sort_unstable();
@@ -39,7 +31,7 @@ fn lines(text: &str) -> Vec<&str> {
 async fn status_lists_working_copy_changes() {
     let repo = repo_with_history();
     let client = repo.client().await;
-    let text = text_ok(&client, "status", json!({ "repo": repo.repo_arg() })).await;
+    let text = call_text(&client, "status", json!({ "repo": repo.repo_arg() })).await;
     assert!(text.contains("a.txt"), "{text}");
     assert!(text.contains("dir with space/f (1).txt"), "{text}");
     assert!(text.contains("Working copy"), "{text}");
@@ -49,7 +41,7 @@ async fn status_lists_working_copy_changes() {
 async fn show_renders_a_revision() {
     let repo = repo_with_history();
     let client = repo.client().await;
-    let text = text_ok(
+    let text = call_text(
         &client,
         "show",
         json!({ "repo": repo.repo_arg(), "revision": "feat", "format": "git" }),
@@ -64,7 +56,7 @@ async fn show_renders_a_revision() {
 async fn show_defaults_to_the_working_copy() {
     let repo = repo_with_history();
     let client = repo.client().await;
-    let text = text_ok(&client, "show", json!({ "repo": repo.repo_arg() })).await;
+    let text = call_text(&client, "show", json!({ "repo": repo.repo_arg() })).await;
     assert!(text.contains("a.txt"), "{text}");
     assert!(!text.contains("b.txt"), "{text}");
 }
@@ -73,7 +65,7 @@ async fn show_defaults_to_the_working_copy() {
 async fn diff_of_the_working_copy_by_name() {
     let repo = repo_with_history();
     let client = repo.client().await;
-    let text = text_ok(
+    let text = call_text(
         &client,
         "diff",
         json!({ "repo": repo.repo_arg(), "format": "name_only" }),
@@ -86,7 +78,7 @@ async fn diff_of_the_working_copy_by_name() {
 async fn diff_paths_are_literal() {
     let repo = repo_with_history();
     let client = repo.client().await;
-    let text = text_ok(
+    let text = call_text(
         &client,
         "diff",
         json!({
@@ -104,7 +96,7 @@ async fn diff_paths_are_relative_to_repo() {
     let repo = repo_with_history();
     let client = repo.client().await;
     let sub = repo.path.join("dir with space");
-    let text = text_ok(
+    let text = call_text(
         &client,
         "diff",
         json!({
@@ -122,7 +114,7 @@ async fn diff_paths_are_relative_to_repo() {
 async fn diff_between_revisions_and_of_a_revision() {
     let repo = repo_with_history();
     let client = repo.client().await;
-    let between = text_ok(
+    let between = call_text(
         &client,
         "diff",
         json!({ "repo": repo.repo_arg(), "from": "feat-", "to": "feat", "format": "name_only" }),
@@ -130,7 +122,7 @@ async fn diff_between_revisions_and_of_a_revision() {
     .await;
     assert_eq!(lines(&between), ["b.txt"]);
 
-    let of = text_ok(
+    let of = call_text(
         &client,
         "diff",
         json!({ "repo": repo.repo_arg(), "revisions": "feat", "format": "stat" }),

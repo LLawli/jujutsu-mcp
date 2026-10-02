@@ -13,7 +13,9 @@ use crate::templates::{
     BOOKMARK_TEMPLATE, Bookmark, COMMIT_TEMPLATE, Commit, OPERATION_TEMPLATE, Operation,
     parse_commits, parse_json_lines,
 };
-use crate::tools::{ToolError, text_result};
+use crate::tools::{ToolError, non_empty, text_result};
+
+pub use crate::tools::literal_path_fileset;
 
 /// Commits returned by `log` when `limit` is not given.
 pub const DEFAULT_LOG_LIMIT: u32 = 50;
@@ -158,19 +160,6 @@ pub struct OpLogOutput {
     pub truncated: bool,
 }
 
-/// A fileset matching `path` literally, relative to the working directory
-/// jj runs in: `cwd:"..."` with quotes and backslashes escaped, so spaces,
-/// parentheses or `|` in a file name are not read as fileset syntax.
-pub fn literal_path_fileset(path: &str) -> Result<String, ToolError> {
-    if path.is_empty() {
-        return Err(ToolError::InvalidParams(
-            "paths must not contain an empty path".to_owned(),
-        ));
-    }
-    let escaped = path.replace('\\', "\\\\").replace('"', "\\\"");
-    Ok(format!("cwd:\"{escaped}\""))
-}
-
 pub fn status_args(params: &StatusParams) -> Vec<String> {
     let _ = params;
     vec!["status".to_owned()]
@@ -183,15 +172,6 @@ fn format_flag(format: DiffFormat) -> &'static str {
         DiffFormat::Summary => "--summary",
         DiffFormat::NameOnly => "--name-only",
     }
-}
-
-fn non_empty<'a>(field: &str, value: &'a str) -> Result<&'a str, ToolError> {
-    if value.trim().is_empty() {
-        return Err(ToolError::InvalidParams(format!(
-            "{field} must not be empty"
-        )));
-    }
-    Ok(value)
 }
 
 /// The revision goes after `--`, where a value starting with `-` cannot be

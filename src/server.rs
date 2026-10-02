@@ -20,10 +20,10 @@ impl JjServer {
         }
     }
 
-    /// Every tool group. Each new group (`write_router`, `remote_router`)
+    /// Every tool group. Each new group (`remote_router`)
     /// is added here with `+`.
     fn tool_router() -> ToolRouter<Self> {
-        Self::read_router()
+        Self::read_router() + Self::write_router()
     }
 }
 

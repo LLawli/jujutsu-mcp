@@ -81,6 +81,27 @@ impl TestRepo {
         fs::write(file, contents).expect("write file");
     }
 
+    /// Description of `revision`.
+    pub fn description(&self, revision: &str) -> String {
+        self.jj(&["log", "--no-graph", "-r", revision, "-T", "description"])
+    }
+
+    /// Change id of `revision`.
+    pub fn change_id(&self, revision: &str) -> String {
+        self.jj(&["log", "--no-graph", "-r", revision, "-T", "change_id"])
+    }
+
+    /// Paths changed in `revision`, sorted.
+    pub fn changed_files(&self, revision: &str) -> Vec<String> {
+        let mut files: Vec<String> = self
+            .jj(&["diff", "--name-only", "-r", revision])
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        files.sort_unstable();
+        files
+    }
+
     pub fn temp_root(&self) -> &Path {
         self.dir.path()
     }
@@ -147,6 +168,16 @@ pub async fn call_ok(client: &Client, tool: &'static str, arguments: Value) -> V
         "text copy differs from structured content"
     );
     structured
+}
+
+/// Calls `tool` and expects a successful text result; returns all its text
+/// blocks joined by newlines.
+pub async fn call_text(client: &Client, tool: &'static str, arguments: Value) -> String {
+    let result = call(client, tool, arguments)
+        .await
+        .unwrap_or_else(|err| panic!("{tool} protocol error: {err:?}"));
+    assert_ne!(result.is_error, Some(true), "{tool} failed: {result:?}");
+    text_of(&result)
 }
 
 /// Calls `tool` and expects a tool result with `isError: true`; returns its

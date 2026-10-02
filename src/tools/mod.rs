@@ -2,6 +2,7 @@
 //! execution so argv construction is unit-testable.
 
 pub mod read;
+pub mod write;
 
 use rmcp::handler::server::tool::IntoCallToolResult;
 use rmcp::model::{CallToolResponse, CallToolResult, ContentBlock};
@@ -46,4 +47,27 @@ pub fn text_result(output: crate::jj::JjOutput) -> rmcp::model::CallToolResult {
         blocks.push(ContentBlock::text(output.stderr));
     }
     CallToolResult::success(blocks)
+}
+
+/// A fileset matching `path` literally, relative to the working directory
+/// jj runs in: `cwd:"..."` with quotes and backslashes escaped, so spaces,
+/// parentheses or `|` in a file name are not read as fileset syntax.
+pub fn literal_path_fileset(path: &str) -> Result<String, ToolError> {
+    if path.is_empty() {
+        return Err(ToolError::InvalidParams(
+            "paths must not contain an empty path".to_owned(),
+        ));
+    }
+    let escaped = path.replace('\\', "\\\\").replace('"', "\\\"");
+    Ok(format!("cwd:\"{escaped}\""))
+}
+
+/// Rejects empty or whitespace-only values, naming the field.
+pub(crate) fn non_empty<'a>(field: &str, value: &'a str) -> Result<&'a str, ToolError> {
+    if value.trim().is_empty() {
+        return Err(ToolError::InvalidParams(format!(
+            "{field} must not be empty"
+        )));
+    }
+    Ok(value)
 }
