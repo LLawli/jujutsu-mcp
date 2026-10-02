@@ -2,6 +2,14 @@
 name = "jujutsu-mcp"
 version = "0.1.0"
 edition = "2024"
+description = "MCP server that lets Claude Code, Codex and Antigravity use jj (Jujutsu) without a shell"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/LLawli/jujutsu-mcp"
+homepage = "https://github.com/LLawli/jujutsu-mcp"
+readme = "README.md"
+keywords = ["jj", "jujutsu", "mcp", "vcs", "agents"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [".github/", "packaging/", "bin/", "justfile"]
 
 [dependencies]
 rmcp = { version = "3.5", features = ["server", "transport-io", "macros"] }
