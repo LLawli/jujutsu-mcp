@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-02
+
 ### Added
 
 - MCP server over stdio exposing jj to coding agents, one tool per operation.
@@ -25,4 +27,5 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Codex (with a 600 s tool timeout) and Antigravity.
 - Startup warning when the jj on `PATH` is older than the tested release.
 
-[Unreleased]: https://github.com/LLawli/jujutsu-mcp/commits/main
+[Unreleased]: https://github.com/LLawli/jujutsu-mcp/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/LLawli/jujutsu-mcp/releases/tag/v0.1.0
