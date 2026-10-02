@@ -201,3 +201,15 @@ fn install_and_codex_paths() {
         Path::new("/x/config.toml")
     );
 }
+
+#[test]
+fn executable_candidates_per_platform() {
+    use jujutsu_mcp::setup::executable_candidates;
+    use std::ffi::OsStr;
+    assert_eq!(executable_candidates("claude", None), ["claude"]);
+    assert_eq!(
+        executable_candidates("claude", Some(OsStr::new(".COM;.EXE;;.CMD"))),
+        ["claude.com", "claude.exe", "claude.cmd"]
+    );
+    assert!(executable_candidates("claude", Some(OsStr::new(""))).is_empty());
+}

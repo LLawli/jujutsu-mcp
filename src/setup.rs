@@ -10,6 +10,7 @@
 use std::ffi::OsString;
 use std::fs;
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -102,12 +103,15 @@ pub enum SetupError {
 impl Environment {
     pub fn from_process() -> Result<Self, SetupError> {
         let path = std::env::var_os("PATH").unwrap_or_default();
-        let home = non_empty_var("HOME").ok_or(SetupError::Environment("HOME"))?;
+        // `home_dir` reads `HOME` on Unix and the profile directory on Windows.
+        let home = std::env::home_dir()
+            .filter(|home| !home.as_os_str().is_empty())
+            .ok_or(SetupError::Environment("HOME"))?;
         let current_exe = std::env::current_exe()
             .map_err(|_| SetupError::Environment("the path of the running executable"))?;
         Ok(Self {
             path,
-            home: PathBuf::from(home),
+            home,
             cargo_home: non_empty_var("CARGO_HOME").map(PathBuf::from),
             codex_home: non_empty_var("CODEX_HOME").map(PathBuf::from),
             current_exe,
@@ -121,7 +125,9 @@ impl Environment {
             .cargo_home
             .clone()
             .unwrap_or_else(|| self.home.join(".cargo"));
-        cargo_home.join("bin").join("jujutsu-mcp")
+        cargo_home
+            .join("bin")
+            .join(format!("jujutsu-mcp{}", std::env::consts::EXE_SUFFIX))
     }
 
     /// `<codex home>/config.toml`, with codex home defaulting to `~/.codex`.
@@ -164,15 +170,48 @@ pub fn parse_setup_args(args: &[String]) -> Result<SetupOptions, SetupError> {
     Ok(options)
 }
 
+/// File names that run `program`. Unix: the name itself. Windows: the name
+/// with each extension of `PATHEXT` (`.COM;.EXE;.CMD`...), lowercased and in
+/// order; the bare name is skipped there, since npm puts a shell script with
+/// no extension next to `claude.cmd`.
+pub fn executable_candidates(program: &str, pathext: Option<&std::ffi::OsStr>) -> Vec<String> {
+    let Some(pathext) = pathext else {
+        return vec![program.to_owned()];
+    };
+    pathext
+        .to_string_lossy()
+        .split(';')
+        .filter(|ext| !ext.is_empty())
+        .map(|ext| format!("{program}{}", ext.to_lowercase()))
+        .collect()
+}
+
+/// The extension list used to resolve programs: `PATHEXT` on Windows (with
+/// its usual default when unset), none elsewhere.
+fn process_pathext() -> Option<OsString> {
+    if cfg!(windows) {
+        Some(non_empty_var("PATHEXT").unwrap_or_else(|| OsString::from(".COM;.EXE;.BAT;.CMD")))
+    } else {
+        None
+    }
+}
+
+/// Unix needs an execute bit; on Windows, being a file with a suitable
+/// extension is enough.
+fn is_executable(meta: &fs::Metadata) -> bool {
+    #[cfg(unix)]
+    return meta.is_file() && meta.permissions().mode() & 0o111 != 0;
+    #[cfg(not(unix))]
+    return meta.is_file();
+}
+
 /// First executable file named `program` in the directories of `path`.
 pub fn find_in_path(program: &str, path: &std::ffi::OsStr) -> Option<PathBuf> {
+    let names = executable_candidates(program, process_pathext().as_deref());
     std::env::split_paths(path)
         .filter(|dir| !dir.as_os_str().is_empty())
-        .map(|dir| dir.join(program))
-        .find(|candidate| {
-            fs::metadata(candidate)
-                .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-        })
+        .flat_map(|dir| names.iter().map(move |name| dir.join(name)))
+        .find(|candidate| fs::metadata(candidate).is_ok_and(|meta| is_executable(&meta)))
 }
 
 /// Commands that register `binary` as [`SERVER_NAME`] in `agent`,
@@ -326,17 +365,52 @@ fn install_binary(
         .parent()
         .ok_or_else(|| install_error(std::io::Error::other("no parent directory")))?;
     fs::create_dir_all(dir).map_err(install_error)?;
-    // Copy next to the destination and rename over it: the running server may
-    // be this very file, and writing into it would fail with ETXTBSY.
+    // Copy next to the destination and move it into place: the running server
+    // may be this very file, and writing into it would fail with ETXTBSY.
     let staging = dir.join(format!(".jujutsu-mcp.{}.tmp", std::process::id()));
     let result = fs::copy(&env.current_exe, &staging)
-        .and_then(|_| fs::set_permissions(&staging, fs::Permissions::from_mode(0o755)))
-        .and_then(|_| fs::rename(&staging, installed));
+        .and_then(|_| make_executable(&staging))
+        .and_then(|_| replace_file(&staging, installed));
     if let Err(source) = result {
         let _ = fs::remove_file(&staging);
         return Err(install_error(source));
     }
     say(out, format_args!("installed {}", installed.display()))
+}
+
+#[cfg(unix)]
+fn make_executable(path: &Path) -> std::io::Result<()> {
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755))
+}
+
+/// Windows decides executability by extension, so there is nothing to set.
+#[cfg(not(unix))]
+fn make_executable(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// Atomic rename over the old file.
+#[cfg(unix)]
+fn replace_file(staging: &Path, installed: &Path) -> std::io::Result<()> {
+    fs::rename(staging, installed)
+}
+
+/// Windows cannot rename over a running executable, but it can rename the
+/// running executable itself. The old file moves to `jujutsu-mcp.old.exe`
+/// first (a previous leftover is removed if it can be) and is put back if the
+/// new one cannot be moved in.
+#[cfg(not(unix))]
+fn replace_file(staging: &Path, installed: &Path) -> std::io::Result<()> {
+    if !installed.exists() {
+        return fs::rename(staging, installed);
+    }
+    let backup = installed.with_file_name("jujutsu-mcp.old.exe");
+    // The leftover may still be running; the rename below then reports it.
+    let _ = fs::remove_file(&backup);
+    fs::rename(installed, &backup)?;
+    fs::rename(staging, installed).inspect_err(|_| {
+        let _ = fs::rename(&backup, installed);
+    })
 }
 
 /// `path` followed by the process's own `PATH`. The agents' CLIs are often
