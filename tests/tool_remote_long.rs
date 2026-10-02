@@ -1,6 +1,9 @@
 //! Long network calls: progress notifications and client cancellation,
 //! driven by a fake `jj` that sleeps.
 
+// Uses a fake jj shell script and /proc.
+#![cfg(unix)]
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};

@@ -1,6 +1,9 @@
 //! Runner behavior checked against a fake `jj` script that reports what it
 //! received: argv, working directory, environment, stdin.
 
+// Uses fake jj shell scripts and /proc.
+#![cfg(unix)]
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};

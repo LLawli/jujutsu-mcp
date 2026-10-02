@@ -1,6 +1,9 @@
 //! Tools and the write queue, observed through a fake `jj` that logs when
 //! each call starts and ends.
 
+// Uses a fake jj shell script.
+#![cfg(unix)]
+
 mod common;
 
 use std::fs;

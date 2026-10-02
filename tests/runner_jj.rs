@@ -82,7 +82,11 @@ async fn works_from_a_subdirectory() {
         .run(&sub, &args(&["root"]))
         .await
         .expect("root succeeds");
-    assert_eq!(out.stdout.trim_end(), repo.path.to_str().expect("utf-8"));
+    // Compared canonicalized: on Windows, canonical paths carry the `\\?\` prefix.
+    let root = std::path::Path::new(out.stdout.trim_end())
+        .canonicalize()
+        .expect("jj root exists");
+    assert_eq!(root, repo.path);
 }
 
 #[tokio::test]

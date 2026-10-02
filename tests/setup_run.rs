@@ -1,6 +1,9 @@
 //! `run_setup` against fake `claude`, `codex` and `agy` CLIs that log their
 //! arguments to `$HOME/calls.log`.
 
+// Uses fake agent CLIs as shell scripts; tests/setup_windows.rs covers Windows.
+#![cfg(unix)]
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};

@@ -21,8 +21,13 @@ fn repo_with_history() -> TestRepo {
     repo
 }
 
-fn lines(text: &str) -> Vec<&str> {
-    let mut lines: Vec<&str> = text.lines().filter(|l| !l.is_empty()).collect();
+/// Non-empty lines, sorted, with `/` as separator (jj prints `\` on Windows).
+fn lines(text: &str) -> Vec<String> {
+    let mut lines: Vec<String> = text
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| l.replace('\\', "/"))
+        .collect();
     lines.sort_unstable();
     lines
 }
@@ -31,7 +36,9 @@ fn lines(text: &str) -> Vec<&str> {
 async fn status_lists_working_copy_changes() {
     let repo = repo_with_history();
     let client = repo.client().await;
-    let text = call_text(&client, "status", json!({ "repo": repo.repo_arg() })).await;
+    let text = call_text(&client, "status", json!({ "repo": repo.repo_arg() }))
+        .await
+        .replace('\\', "/");
     assert!(text.contains("a.txt"), "{text}");
     assert!(text.contains("dir with space/f (1).txt"), "{text}");
     assert!(text.contains("Working copy"), "{text}");

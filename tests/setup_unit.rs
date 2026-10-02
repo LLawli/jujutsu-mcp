@@ -1,13 +1,13 @@
 //! Pure parts of `jujutsu-mcp setup`.
 
 use std::ffi::OsString;
-use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use jujutsu_mcp::setup::{
-    Agent, Environment, SetupError, SetupOptions, Step, codex_with_timeout, find_in_path,
-    parse_setup_args, registration_steps,
+    Agent, Environment, SetupError, SetupOptions, Step, codex_with_timeout, parse_setup_args,
+    registration_steps,
 };
 
 fn s(list: &[&str]) -> Vec<String> {
@@ -59,8 +59,12 @@ fn rejects_bad_options() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn finds_executables_on_path() {
+    use jujutsu_mcp::setup::find_in_path;
+    use std::fs;
+
     let dir = tempfile::tempdir().expect("temp");
     let root = dir.path().canonicalize().expect("canonicalize");
     let (empty, plain, exec) = (root.join("a"), root.join("b"), root.join("c"));
@@ -184,13 +188,14 @@ fn env(cargo_home: Option<&str>, codex_home: Option<&str>) -> Environment {
 
 #[test]
 fn install_and_codex_paths() {
+    let binary = format!("jujutsu-mcp{}", std::env::consts::EXE_SUFFIX);
     assert_eq!(
         env(None, None).install_path(),
-        Path::new("/home/u/.cargo/bin/jujutsu-mcp")
+        Path::new("/home/u/.cargo/bin").join(&binary)
     );
     assert_eq!(
         env(Some("/c"), None).install_path(),
-        Path::new("/c/bin/jujutsu-mcp")
+        Path::new("/c/bin").join(&binary)
     );
     assert_eq!(
         env(None, None).codex_config(),

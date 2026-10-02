@@ -1,5 +1,8 @@
 //! The binary warns when the jj on PATH is older than the tested release.
 
+// Uses a fake jj shell script.
+#![cfg(unix)]
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};

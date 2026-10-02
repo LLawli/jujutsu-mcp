@@ -52,14 +52,17 @@ fn accepts_existing_directory() {
 
 #[test]
 fn canonicalizes_dot_dot_and_trailing_slash() {
-    let (_dir, root) = temp_root();
+    let (dir, root) = temp_root();
     let sub = root.join("a");
     fs::create_dir(&sub).expect("mkdir");
-    let messy = format!("{}/a/../a/./", root.display());
+    // Built from the path as a caller would write it: a canonical Windows
+    // path is verbatim (`\\?\`), and verbatim paths take no `..` or `/`.
+    let messy = format!("{}/a/../a/./", dir.path().display());
     let repo = RepoPath::new(&messy).expect("valid");
     assert_eq!(repo.as_path(), sub);
 }
 
+#[cfg(unix)]
 #[test]
 fn resolves_symlinks() {
     let (_dir, root) = temp_root();

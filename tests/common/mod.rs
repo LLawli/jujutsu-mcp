@@ -228,7 +228,8 @@ pub struct SigningRemote {
 impl SigningRemote {
     pub fn new() -> Self {
         let dir = tempfile::tempdir().expect("create temp dir");
-        let root = dir.path().canonicalize().expect("canonicalize temp dir");
+        // Not canonicalized: git rejects Windows verbatim (`\\?\`) paths.
+        let root = dir.path().to_path_buf();
         let bare = root.join("remote.git");
         run_checked(
             Command::new("git")
@@ -260,9 +261,9 @@ impl SigningRemote {
 [signing]
 behavior = "drop"
 backend = "ssh"
-key = "{key}"
+key = '{key}'
 backends.ssh.program = "ssh-keygen"
-backends.ssh.allowed-signers = "{allowed}"
+backends.ssh.allowed-signers = '{allowed}'
 
 [git]
 sign-on-push = true
