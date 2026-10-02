@@ -3,7 +3,7 @@
 use jujutsu_mcp::tools::ToolError;
 use jujutsu_mcp::tools::remote::{
     GitFetchParams, GitPushParams, commits_to_sign_line, git_fetch_args, git_push_args,
-    push_targets,
+    push_remote, push_targets,
 };
 
 fn s(list: &[&str]) -> Vec<String> {
@@ -139,6 +139,28 @@ Dry-run requested, not pushing.
             "eeeeeeeeeeee"
         ])
     );
+}
+
+#[test]
+fn dry_run_names_the_destination_remote() {
+    let output = "\
+Changes to push to my-fork:
+  bookmark: feat [add to 37710df6fd4a]
+Dry-run requested, not pushing.
+";
+    assert_eq!(push_remote(output).as_deref(), Some("my-fork"));
+    let after_warning = "\
+Warning: Skipped signing 1 immutable commits:
+Changes to push to origin:
+  bookmark: feat [add to 37710df6fd4a]
+";
+    assert_eq!(push_remote(after_warning).as_deref(), Some("origin"));
+}
+
+#[test]
+fn dry_run_without_destination_remote() {
+    assert_eq!(push_remote("Nothing changed.\n"), None);
+    assert_eq!(push_remote(""), None);
 }
 
 #[test]

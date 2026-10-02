@@ -124,17 +124,28 @@ Each commit signed on push asks for a YubiKey touch. Codex cuts MCP tools at
   signed.
 - When the client sends a `progressToken`, the server emits progress
   notifications while it waits.
-- The count is the commits reachable from the dry run's targets that no
-  remote bookmark reaches yet, ignoring the colocated `git` remote, which
-  mirrors every local bookmark and would make the count zero.
-- The `git` remote is excluded by name, `remote_bookmarks(remote=~exact:"git")`.
-  v0.1.0 subtracted `remote_bookmarks(remote=exact:"git")` from
-  `remote_bookmarks()`, but those are commit sets: a synced trunk has
-  `master@git` and `master@origin` on the same commit, so the trunk tip left
-  the exclusion set and all of `::master` was counted (23 announced, 16
-  signed). jj 0.45.1 accepts the negated pattern; if a supported jj ever
-  rejects it, build the union of `remote_bookmarks(remote=exact:"<name>")`
-  over `jj git remote list` instead.
+- The count mirrors `sign_commits_before_push` in jj's
+  `cli/src/commands/git/push.rs` (0.45.1):
+  `((::targets ~ ::remote_bookmarks(remote=exact:"<dest>")) ~ immutable()) & mine() & ~signed()`,
+  with the destination remote read from the dry run's `Changes to push to
+  <remote>:` line. Each filter matches one of jj's: it only excludes what the
+  destination remote already has, skips immutable commits (they are pushed
+  unsigned, with a warning), and signs only unsigned commits authored by the
+  user. Without a remote line the remote exclusion is dropped: counting too
+  many touches is better than announcing none and then waiting on the key.
+- Evidence: an end-to-end run against the released binary compared the
+  announced count with jj's `Updated signatures of K commits` in 11
+  scenarios. The v0.1.1 revset (all remotes but `git`, no other filter) was
+  wrong in 5 of them: a coworker's rebased commits (3 announced, 1 signed),
+  a branch re-pushed after the remote lost it (2, 0), `signing.behavior =
+  "own"` (2, 0), a commit under a tag (2, 1) and commits that reached another
+  remote unsigned (0, 2). The new revset matched all 11. v0.1.0 had also
+  subtracted the `git` remote's commits from every remote's, which dropped a
+  synced trunk from the exclusion and counted all of it (23 announced, 16
+  signed).
+- Reopen if: jj changes which commits it signs on push (watch
+  `sign_commits_before_push` across releases), or `mine()` / `signed()`
+  stop matching its author and signature checks.
 - jj 0.45.1 exits 0 when asked to push a bookmark that does not exist, with
   only a `No matching bookmarks for names` warning. `git_push` turns that
   warning from the dry run into an error before anything is pushed. It

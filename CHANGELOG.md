@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- `git_push`'s `commits to sign: N` now matches the commits jj actually
+  signs. It no longer counts commits authored by someone else, commits that
+  are already signed, or immutable commits, and it counts commits that
+  another remote has but the destination does not. Before, a push to a
+  second remote could announce 0 and then ask for touches.
+
 ## [0.1.1] - 2026-10-02
 
 ### Fixed

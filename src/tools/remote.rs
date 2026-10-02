@@ -121,25 +121,54 @@ pub fn push_targets(dry_run_output: &str) -> Vec<String> {
         .collect()
 }
 
-/// Revset of the commits a push would send for the first time: reachable
-/// from `targets` but from no bookmark of a real remote. The `git` remote
-/// is excluded by name (`remote=~exact:"git"`) because in a colocated
-/// repository jj mirrors every local bookmark there, which would make every
-/// commit look already pushed. It has to be a filter on the remote, not a
-/// subtraction of commit sets: `remote_bookmarks()` yields commits, and a
-/// synced trunk has `main@git` and `main@origin` on the same commit, so
-/// subtracting would drop the trunk tip from the exclusion and count all of
-/// its ancestors as unpushed.
-fn unpushed_revset(targets: &[String]) -> String {
+/// Remote the dry run would push to, from its `Changes to push to <remote>:`
+/// line. `None` when jj printed no such line.
+pub fn push_remote(dry_run_output: &str) -> Option<String> {
+    dry_run_output.lines().find_map(|line| {
+        let remote = line
+            .trim()
+            .strip_prefix("Changes to push to ")?
+            .strip_suffix(':')?
+            .trim();
+        (!remote.is_empty()).then(|| remote.to_owned())
+    })
+}
+
+/// Escapes a value for a double-quoted revset string.
+fn revset_quote(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Revset of the commits jj would sign on this push, mirroring jj's
+/// `sign_commits_before_push`:
+///
+/// - `::targets ~ ::remote_bookmarks(remote=exact:"<remote>")`: only commits
+///   the destination remote does not have yet. jj looks at that remote alone,
+///   so a commit pushed elsewhere but missing here is still signed. The
+///   colocated `git` remote, which mirrors every local bookmark, therefore
+///   never hides anything. The exclusion is a filter on the remote and not a
+///   subtraction of `remote_bookmarks()` commit sets: a synced trunk has
+///   `main@git` and `main@origin` on the same commit, so subtracting would
+///   drop the trunk tip and count all of its ancestors as unpushed. When the
+///   destination is unknown (`remote` is `None`) nothing is excluded, which
+///   overcounts rather than hides security-key touches.
+/// - `~ immutable()`: jj skips immutable commits (this also covers the root).
+/// - `& mine() & ~signed()`: the sign behavior is `own`, so only unsigned
+///   commits authored by the user are signed.
+fn unpushed_revset(targets: &[String], remote: Option<&str>) -> String {
     let ids = targets
         .iter()
-        .map(|id| {
-            let escaped = id.replace('\\', "\\\\").replace('"', "\\\"");
-            format!("commit_id(\"{escaped}\")")
-        })
+        .map(|id| format!("commit_id(\"{}\")", revset_quote(id)))
         .collect::<Vec<_>>()
         .join(" | ");
-    format!("(::({ids}) ~ ::remote_bookmarks(remote=~exact:\"git\")) ~ root()")
+    let outgoing = match remote {
+        Some(remote) => format!(
+            "(::({ids}) ~ ::remote_bookmarks(remote=exact:\"{}\"))",
+            revset_quote(remote)
+        ),
+        None => format!("::({ids})"),
+    };
+    format!("({outgoing} ~ immutable()) & mine() & ~signed()")
 }
 
 /// jj exits 0 when a requested bookmark does not exist: it warns and pushes
@@ -232,28 +261,30 @@ impl JjServer {
         }
     }
 
-    /// Number of commits the dry run would make jj sign: the commits
-    /// reachable from the push targets that no real remote has yet.
+    /// Number of commits the dry run would make jj sign: the mutable commits
+    /// reachable from the push targets that the destination remote lacks and
+    /// that are unsigned and authored by the user (see `unpushed_revset`).
     async fn commits_to_sign(
         &self,
         repo: &RepoPath,
         dry_run: &JjOutput,
         context: &RequestContext<RoleServer>,
     ) -> Result<usize, ToolError> {
-        let targets = push_targets(&format!(
-            "{}
-{}",
-            dry_run.stdout, dry_run.stderr
-        ));
+        let text = format!("{}\n{}", dry_run.stdout, dry_run.stderr);
+        let targets = push_targets(&text);
         if targets.is_empty() {
             return Ok(0);
         }
+        let remote = push_remote(&text);
         let args = vec![
             "log".to_owned(),
             "--no-graph".to_owned(),
             "--template".to_owned(),
             "commit_id ++ \"\\n\"".to_owned(),
-            format!("--revisions={}", unpushed_revset(&targets)),
+            format!(
+                "--revisions={}",
+                unpushed_revset(&targets, remote.as_deref())
+            ),
         ];
         let output = self.run_watched(repo, &args, context, None).await?;
         Ok(output
