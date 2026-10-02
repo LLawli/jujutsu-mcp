@@ -158,7 +158,7 @@ fn reject_unmatched_bookmarks(dry_run: &JjOutput) -> Result<(), ToolError> {
 }
 
 /// What a long call reports while it runs.
-struct Progress<'a> {
+pub(crate) struct Progress<'a> {
     context: &'a RequestContext<RoleServer>,
     interval: Duration,
     /// What is being done, e.g. `git push (3 commits to sign)`.
@@ -168,7 +168,7 @@ struct Progress<'a> {
 impl JjServer {
     /// Waits for the repository's write queue, giving up if the client
     /// cancels first so a cancelled call never runs anything.
-    async fn lock_write(
+    pub(crate) async fn lock_write(
         &self,
         repo: &RepoPath,
         context: &RequestContext<RoleServer>,
@@ -184,7 +184,7 @@ impl JjServer {
     /// client sent a progress token. A client cancellation drops the runner
     /// future, which kills the jj process, and returns `Cancelled`. There is
     /// no timeout: a push may wait for security-key touches.
-    async fn run_watched(
+    pub(crate) async fn run_watched(
         &self,
         repo: &RepoPath,
         args: &[String],

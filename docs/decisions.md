@@ -73,6 +73,15 @@ in the server `instructions`, not as a tool.
 Reopen if: agents keep falling back to the shell for one of the excluded
 operations.
 
+Reopened on 2026-10-02, at the user's request, before the first rollout:
+`run` takes a jj argv (`["bookmark", "delete", "old"]`) for anything the
+dedicated tools do not cover, so the shell hook can block jj without
+leaving agents stuck. It keeps the hardening (no shell, stdin on
+`/dev/null`, failing editor), always takes the repository's write queue
+because it cannot tell reads from writes, and is annotated destructive and
+open-world so clients ask before running it. Its description steers agents
+to the dedicated tools first.
+
 ## Repository location: `repo` is required
 
 Every tool takes `repo`, an absolute path. The server runs jj with it as the

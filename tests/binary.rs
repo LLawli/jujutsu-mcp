@@ -41,7 +41,7 @@ async fn start(env: &[(&str, &Path)], stderr_log: &Path) -> Server {
     Server { client, child }
 }
 
-const ALL_TOOLS: [&str; 20] = [
+const ALL_TOOLS: [&str; 21] = [
     "abandon",
     "bookmark_list",
     "bookmark_set",
@@ -57,6 +57,7 @@ const ALL_TOOLS: [&str; 20] = [
     "op_log",
     "rebase",
     "restore",
+    "run",
     "show",
     "split",
     "squash",

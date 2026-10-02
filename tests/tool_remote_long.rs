@@ -89,11 +89,15 @@ impl Fixture {
 }
 
 fn fetch_request(arguments: Value) -> ClientRequest {
+    tool_request("git_fetch", arguments)
+}
+
+fn tool_request(tool: &'static str, arguments: Value) -> ClientRequest {
     let Value::Object(arguments) = arguments else {
         panic!("object");
     };
     ClientRequest::CallToolRequest(Request::new(
-        CallToolRequestParams::new("git_fetch").with_arguments(arguments),
+        CallToolRequestParams::new(tool).with_arguments(arguments),
     ))
 }
 
@@ -152,6 +156,44 @@ async fn cancelling_a_fetch_kills_jj() {
     let handle = client
         .send_cancellable_request(
             fetch_request(json!({ "repo": fx.repo_arg() })),
+            PeerRequestOptions::no_options(),
+        )
+        .await
+        .expect("request sent");
+
+    let pid_file = fx.root.join("pid");
+    let mut pid = String::new();
+    for _ in 0..500 {
+        if let Ok(found) = fs::read_to_string(&pid_file) {
+            pid = found.trim().to_owned();
+            if !pid.is_empty() {
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(!pid.is_empty(), "fake jj never started");
+
+    handle.cancel(None).await.expect("cancel sent");
+    for _ in 0..300 {
+        if is_dead(&pid) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("jj process {pid} still running after cancellation");
+}
+
+#[tokio::test]
+async fn cancelling_run_kills_jj() {
+    let fx = Fixture::new();
+    let client = fx.client("30", Recorder::default()).await;
+    let handle = client
+        .send_cancellable_request(
+            tool_request(
+                "run",
+                json!({ "repo": fx.repo_arg(), "args": ["git", "fetch"] }),
+            ),
             PeerRequestOptions::no_options(),
         )
         .await

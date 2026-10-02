@@ -38,7 +38,7 @@ impl JjServer {
 
     /// Every tool group, added here with `+`.
     fn tool_router() -> ToolRouter<Self> {
-        Self::read_router() + Self::write_router() + Self::remote_router()
+        Self::read_router() + Self::write_router() + Self::remote_router() + Self::free_router()
     }
 }
 

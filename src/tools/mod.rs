@@ -1,6 +1,7 @@
 //! MCP tools. Each tool separates a pure `params -> argv` function from
 //! execution so argv construction is unit-testable.
 
+pub mod free;
 pub mod read;
 pub mod remote;
 pub mod write;

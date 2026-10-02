@@ -30,6 +30,10 @@ pushed commit is signed and each signature may ask the user to touch a
 security key: run `git_push` with `dry_run: true` first and tell the user
 how many commits will be signed (`commits to sign: N`).
 
+For a jj command no tool covers (`bookmark delete`, `bookmark track`,
+`duplicate`, `file track`, ...), use `run` with the arguments as a list,
+for example `["bookmark", "delete", "old"]`. Interactive commands fail there.
+
 Revisions use jj's revset language: `@` (working copy), `@-` (its parent),
 `main`, `feat@origin`, `root()..@`, `trunk()`. Paths in `paths` are taken
 literally, relative to `repo`.

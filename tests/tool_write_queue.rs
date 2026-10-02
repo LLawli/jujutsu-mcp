@@ -198,3 +198,26 @@ async fn push_holds_the_queue_from_dry_run_to_push() {
         "describe ran between the dry run and the push: {events:?}"
     );
 }
+
+#[tokio::test]
+async fn run_waits_for_writes() {
+    let fx = Fixture::new();
+    let client = fx.client().await;
+    let (r0, r1) = tokio::join!(
+        call(
+            &client,
+            "run",
+            json!({ "repo": fx.path("ws"), "args": ["bookmark", "delete", "x"] })
+        ),
+        call(
+            &client,
+            "describe",
+            json!({ "repo": fx.path("ws/sub"), "message": "a" })
+        )
+    );
+    assert_ok(r0);
+    assert_ok(r1);
+    let events = fx.events();
+    assert_eq!(events.len(), 4, "{events:?}");
+    assert!(!overlapped(&events), "{events:?}");
+}
