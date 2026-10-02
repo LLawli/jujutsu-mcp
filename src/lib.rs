@@ -3,5 +3,6 @@
 pub mod jj;
 pub mod repo;
 pub mod server;
+pub mod setup;
 pub mod templates;
 pub mod tools;

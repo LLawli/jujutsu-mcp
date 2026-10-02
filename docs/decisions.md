@@ -178,6 +178,26 @@ Each tool separates a pure `params -> argv` function from execution.
 - Gates: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`,
   wrapped in a `justfile`. Errors use `thiserror`; no `unwrap` outside tests.
 
-Installed with `cargo install --path .`; `target/` lives on the data disk via
-`offload`. On startup the server logs a warning when the jj on `PATH` is older
-than the version the tests ran against.
+`target/` lives on the data disk via `offload`. On startup the server logs a
+warning when the jj on `PATH` is older than the version the tests ran
+against.
+
+## Installation: `jujutsu-mcp setup`
+
+`setup` copies the running binary to `<cargo home>/bin/jujutsu-mcp` (where
+`cargo install` puts it, so a build run from `target/` or a downloaded
+binary never ends up registered at a path that `cargo clean` deletes) and
+registers it as the `jj` server in every agent whose CLI is on `PATH`.
+
+- Registration goes through each agent's CLI (`claude mcp add -s user`,
+  `codex mcp add`, `agy mcp add`), never by editing their files: Claude Code
+  rewrites `~/.claude.json` while it runs, and the CLIs own their formats.
+- Codex's CLI cannot set `tool_timeout_sec`, so setup writes
+  `tool_timeout_sec = 600` into `config.toml` with `toml_edit`, which keeps
+  comments and ordering. That is the reason for the dependency.
+- The copy goes to a temporary file in the target directory and is renamed
+  over the old binary, which may be running.
+- Rerunning is safe: earlier registrations are removed or updated first.
+- `--dry-run` prints the plan; `--agent` limits it to some agents.
+- The user's shell hook (`jj-guarda`) and instruction files are not part of
+  setup: they belong to one machine's environment, not to the server.

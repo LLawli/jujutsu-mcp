@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 use jujutsu_mcp::jj::{JjRunner, TESTED_JJ_VERSION};
 use jujutsu_mcp::server::JjServer;
+use jujutsu_mcp::setup::{Environment, SetupError, parse_setup_args, run_setup};
 use rmcp::ServiceExt;
 use rmcp::service::ServerInitializeError;
 use rmcp::transport::stdio;
@@ -21,6 +22,41 @@ enum FatalError {
 }
 
 fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args_os()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+    match args.get(1).map(String::as_str) {
+        None => serve(),
+        Some("setup") => setup(&args[2..]),
+        Some(other) => {
+            eprintln!("jujutsu-mcp: unknown argument: {other}");
+            eprintln!("{}", jujutsu_mcp::setup::USAGE);
+            ExitCode::from(2)
+        }
+    }
+}
+
+/// `jujutsu-mcp setup`: no tracing and no async runtime, it only runs a few
+/// short commands.
+fn setup(args: &[String]) -> ExitCode {
+    let result = parse_setup_args(args).and_then(|options| {
+        let env = Environment::from_process()?;
+        run_setup(&env, &options, &mut std::io::stdout())
+    });
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("jujutsu-mcp: {err}");
+            ExitCode::from(if matches!(err, SetupError::Usage(_)) {
+                2
+            } else {
+                1
+            })
+        }
+    }
+}
+
+fn serve() -> ExitCode {
     init_tracing();
     let result = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
