@@ -1,0 +1,259 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  JJ_VERSION: "0.45.1"
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  check-version:
+    name: Tag matches Cargo.toml
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      - id: version
+        run: |
+          version="${TAG#v}"
+          manifest=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          if [ "$version" != "$manifest" ]; then
+            echo "::error::tag $TAG does not match Cargo.toml version $manifest"
+            exit 1
+          fi
+          if ! grep -q "^## \[$version\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Test (Linux)
+    needs: check-version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install jj
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL "https://github.com/jj-vcs/jj/releases/download/v${JJ_VERSION}/jj-v${JJ_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+            | tar xz -C "$HOME/.local/bin" ./jj
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: check-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15
+            target: x86_64-apple-darwin
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: contains(matrix.target, 'linux-musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build
+        run: cargo build --locked --release --target ${{ matrix.target }}
+
+      - name: Package (tar.gz)
+        if: runner.os != 'Windows'
+        run: |
+          name="jujutsu-mcp-${{ matrix.target }}"
+          mkdir -p dist
+          cp README.md CHANGELOG.md LICENSE-MIT LICENSE-APACHE "target/${{ matrix.target }}/release/jujutsu-mcp" dist/
+          tar -czf "$name.tar.gz" -C dist .
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+
+      - name: Package (zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $name = "jujutsu-mcp-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item README.md, CHANGELOG.md, LICENSE-MIT, LICENSE-APACHE, "target/${{ matrix.target }}/release/jujutsu-mcp.exe" dist/
+          Compress-Archive -Path dist/* -DestinationPath "$name.zip"
+          $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name.zip" | Out-File -Encoding ascii -NoNewline "$name.zip.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jujutsu-mcp-${{ matrix.target }}
+          path: |
+            jujutsu-mcp-${{ matrix.target }}.*
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    needs: [check-version, test, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Release notes
+        env:
+          VERSION: ${{ needs.check-version.outputs.version }}
+        run: |
+          awk -v ver="$VERSION" '
+            BEGIN { hdr = "## [" ver "]" }
+            index($0, hdr) == 1 { flag = 1; next }
+            flag && index($0, "## [") == 1 { exit }
+            flag && /^\[[^]]+\]: / { next }
+            flag { print }
+          ' CHANGELOG.md > notes.md
+          {
+            echo
+            echo "## Install"
+            echo
+            echo '```sh'
+            echo "brew install LLawli/tap/jujutsu-mcp"
+            echo "cargo install jujutsu-mcp"
+            echo "mise use -g github:LLawli/jujutsu-mcp"
+            echo '```'
+            echo
+            echo "Or download an archive below, then register the server in your agents with \`jujutsu-mcp setup\`."
+            echo
+            echo "## SHA-256"
+            echo
+            echo '```'
+            cat artifacts/*.sha256
+            echo '```'
+          } >> notes.md
+          cat notes.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" artifacts/* \
+            --title "$TAG" \
+            --notes-file notes.md \
+            --verify-tag
+
+  crates:
+    name: Publish to crates.io
+    needs: release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Rerunning a release must not fail on a version already published.
+      - name: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if output=$(cargo publish --locked 2>&1); then
+            echo "$output"
+          elif echo "$output" | grep -q "already exists"; then
+            echo "$output"
+            echo "::notice::already published"
+          else
+            echo "$output"
+            exit 1
+          fi
+
+  homebrew:
+    name: Update Homebrew tap
+    needs: [check-version, release]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+          path: source
+
+      - uses: actions/checkout@v5
+        with:
+          repository: LLawli/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Render formula
+        run: |
+          mkdir -p tap/Formula
+          source/packaging/homebrew/render-formula.sh \
+            "${{ needs.check-version.outputs.version }}" artifacts \
+            > tap/Formula/jujutsu-mcp.rb
+          cat tap/Formula/jujutsu-mcp.rb
+
+      - name: Push formula
+        working-directory: tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/jujutsu-mcp.rb
+          if git diff --cached --quiet; then
+            echo "::notice::formula already up to date"
+            exit 0
+          fi
+          git commit -m "jujutsu-mcp ${{ needs.check-version.outputs.version }}"
+          git push

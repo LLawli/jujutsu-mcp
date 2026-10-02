@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Cuts a release: bumps the version, dates the changelog, runs the gates,
+# commits with jj, moves and pushes `main`, then creates a signed tag and
+# pushes it. The tag triggers .github/workflows/release.yml.
+#
+# usage: bin/release X.Y.Z [--no-push] [--no-check]
+#   --no-push   stop after the local commit (no bookmark push, no tag)
+#   --no-check  skip `just check` (only for trying the script out)
+set -euo pipefail
+
+REPO_URL="https://github.com/LLawli/jujutsu-mcp"
+
+die() {
+  echo "release: $*" >&2
+  exit 1
+}
+
+version=""
+push=1
+check=1
+for arg in "$@"; do
+  case "$arg" in
+    --no-push) push=0 ;;
+    --no-check) check=0 ;;
+    -*) die "unknown option $arg" ;;
+    *) [ -z "$version" ] || die "one version only"; version=$arg ;;
+  esac
+done
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "usage: bin/release X.Y.Z [--no-push] [--no-check]"
+tag="v$version"
+
+cd "$(dirname "$0")/.."
+
+[ "$(jj log --no-graph -r @ -T 'empty')" = "true" ] \
+  || die "the working-copy commit has changes; commit or move them first"
+git rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "tag $tag already exists"
+
+unreleased=$(awk '
+  index($0, "## [Unreleased]") == 1 { flag = 1; next }
+  flag && index($0, "## [") == 1 { exit }
+  flag && /^\[[^]]+\]: / { next }
+  flag && NF { print }
+' CHANGELOG.md)
+[ -n "$unreleased" ] || die "CHANGELOG.md has nothing under [Unreleased]"
+
+previous=$(git tag --list 'v*.*.*' --sort=-v:refname | head -n 1)
+
+echo "==> Version $version"
+sed -i.bak "0,/^version = \".*\"$/s//version = \"$version\"/" Cargo.toml && rm Cargo.toml.bak
+cargo update --workspace --offline --quiet
+
+echo "==> Changelog"
+today=$(date +%Y-%m-%d)
+if [ -n "$previous" ]; then
+  version_link="[$version]: $REPO_URL/compare/$previous...$tag"
+else
+  version_link="[$version]: $REPO_URL/releases/tag/$tag"
+fi
+awk -v ver="$version" -v day="$today" -v unrel="[Unreleased]: $REPO_URL/compare/$tag...HEAD" -v vlink="$version_link" '
+  $0 == "## [Unreleased]" { print; print ""; print "## [" ver "] - " day; next }
+  index($0, "[Unreleased]: ") == 1 { print unrel; print vlink; next }
+  { print }
+' CHANGELOG.md > CHANGELOG.md.new && mv CHANGELOG.md.new CHANGELOG.md
+
+if [ "$check" = 1 ]; then
+  echo "==> Gates"
+  just check
+fi
+
+echo "==> Commit"
+jj commit -m "chore: release $tag" Cargo.toml Cargo.lock CHANGELOG.md
+jj bookmark set main -r @-
+
+if [ "$push" = 0 ]; then
+  echo "Committed $tag locally; not pushed (--no-push)."
+  exit 0
+fi
+
+echo "==> Push main (every outgoing commit is signed; expect one key touch each)"
+jj git push --bookmark main
+
+# sign-on-push rewrote the commits, so tag the commit main points at now.
+commit=$(jj log --no-graph -r main -T commit_id)
+echo "==> Tag $tag at ${commit:0:12}"
+git tag -s "$tag" -m "$tag" "$commit"
+git push origin "$tag"
+
+echo "Released $tag. Follow the pipeline at $REPO_URL/actions"

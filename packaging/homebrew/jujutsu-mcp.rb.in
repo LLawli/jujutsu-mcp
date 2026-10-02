@@ -1,0 +1,45 @@
+class JujutsuMcp < Formula
+  desc "MCP server that lets coding agents use jj without a shell"
+  homepage "https://github.com/LLawli/jujutsu-mcp"
+  version "@VERSION@"
+  license any_of: ["MIT", "Apache-2.0"]
+
+  on_macos do
+    on_arm do
+      url "https://github.com/LLawli/jujutsu-mcp/releases/download/v@VERSION@/jujutsu-mcp-aarch64-apple-darwin.tar.gz"
+      sha256 "@SHA256_aarch64-apple-darwin@"
+    end
+    on_intel do
+      url "https://github.com/LLawli/jujutsu-mcp/releases/download/v@VERSION@/jujutsu-mcp-x86_64-apple-darwin.tar.gz"
+      sha256 "@SHA256_x86_64-apple-darwin@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/LLawli/jujutsu-mcp/releases/download/v@VERSION@/jujutsu-mcp-aarch64-unknown-linux-musl.tar.gz"
+      sha256 "@SHA256_aarch64-unknown-linux-musl@"
+    end
+    on_intel do
+      url "https://github.com/LLawli/jujutsu-mcp/releases/download/v@VERSION@/jujutsu-mcp-x86_64-unknown-linux-musl.tar.gz"
+      sha256 "@SHA256_x86_64-unknown-linux-musl@"
+    end
+  end
+
+  depends_on "jj"
+
+  def install
+    bin.install "jujutsu-mcp"
+  end
+
+  def caveats
+    <<~EOS
+      Register the server in Claude Code, Codex and Antigravity with:
+        jujutsu-mcp setup
+    EOS
+  end
+
+  test do
+    assert_match "usage:", shell_output("#{bin}/jujutsu-mcp setup --bogus 2>&1", 2)
+  end
+end
