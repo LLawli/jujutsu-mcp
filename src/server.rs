@@ -6,7 +6,7 @@ use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::model::{Implementation, ServerCapabilities, ServerConfig};
 use rmcp::{ServerHandler, tool_handler};
 
-use crate::jj::JjRunner;
+use crate::jj::{JjRunner, WriteQueue};
 
 /// How often a long call reports progress unless configured otherwise.
 const DEFAULT_PROGRESS_INTERVAL: Duration = Duration::from_secs(2);
@@ -14,6 +14,7 @@ const DEFAULT_PROGRESS_INTERVAL: Duration = Duration::from_secs(2);
 #[derive(Debug, Clone)]
 pub struct JjServer {
     pub(crate) runner: JjRunner,
+    pub(crate) write_queue: WriteQueue,
     tool_router: ToolRouter<Self>,
     pub(crate) progress_interval: Duration,
 }
@@ -22,6 +23,7 @@ impl JjServer {
     pub fn new(runner: JjRunner) -> Self {
         Self {
             runner,
+            write_queue: WriteQueue::new(),
             tool_router: Self::tool_router(),
             progress_interval: DEFAULT_PROGRESS_INTERVAL,
         }

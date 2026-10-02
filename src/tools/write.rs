@@ -416,6 +416,7 @@ impl JjServer {
     ) -> Result<CallToolResult, ToolError> {
         let repo = RepoPath::new(&params.repo)?;
         let args = describe_args(&params)?;
+        let _guard = self.write_queue.lock(&repo).await;
         let output = self.runner.run(&repo, &args).await?;
         Ok(text_result(output))
     }
@@ -436,6 +437,7 @@ impl JjServer {
     ) -> Result<CallToolResult, ToolError> {
         let repo = RepoPath::new(&params.repo)?;
         let args = new_args(&params)?;
+        let _guard = self.write_queue.lock(&repo).await;
         let output = self.runner.run(&repo, &args).await?;
         Ok(text_result(output))
     }
@@ -453,6 +455,7 @@ impl JjServer {
     ) -> Result<CallToolResult, ToolError> {
         let repo = RepoPath::new(&params.repo)?;
         let args = commit_args(&params)?;
+        let _guard = self.write_queue.lock(&repo).await;
         let output = self.runner.run(&repo, &args).await?;
         Ok(text_result(output))
     }
@@ -471,6 +474,7 @@ impl JjServer {
     ) -> Result<CallToolResult, ToolError> {
         let repo = RepoPath::new(&params.repo)?;
         let args = squash_args(&params)?;
+        let _guard = self.write_queue.lock(&repo).await;
         let output = self.runner.run(&repo, &args).await?;
         Ok(text_result(output))
     }
@@ -487,6 +491,7 @@ impl JjServer {
     ) -> Result<CallToolResult, ToolError> {
         let repo = RepoPath::new(&params.repo)?;
         let args = split_args(&params)?;
+        let _guard = self.write_queue.lock(&repo).await;
         let output = self.runner.run(&repo, &args).await?;
         Ok(text_result(output))
     }
@@ -503,6 +508,7 @@ impl JjServer {
     ) -> Result<CallToolResult, ToolError> {
         let repo = RepoPath::new(&params.repo)?;
         let args = edit_args(&params)?;
+        let _guard = self.write_queue.lock(&repo).await;
         let output = self.runner.run(&repo, &args).await?;
         Ok(text_result(output))
     }
@@ -519,6 +525,7 @@ impl JjServer {
     ) -> Result<CallToolResult, ToolError> {
         let repo = RepoPath::new(&params.repo)?;
         let args = rebase_args(&params)?;
+        let _guard = self.write_queue.lock(&repo).await;
         let output = self.runner.run(&repo, &args).await?;
         Ok(text_result(output))
     }
@@ -536,6 +543,7 @@ impl JjServer {
     ) -> Result<CallToolResult, ToolError> {
         let repo = RepoPath::new(&params.repo)?;
         let args = restore_args(&params)?;
+        let _guard = self.write_queue.lock(&repo).await;
         let output = self.runner.run(&repo, &args).await?;
         Ok(text_result(output))
     }
@@ -552,6 +560,7 @@ impl JjServer {
     ) -> Result<CallToolResult, ToolError> {
         let repo = RepoPath::new(&params.repo)?;
         let args = abandon_args(&params)?;
+        let _guard = self.write_queue.lock(&repo).await;
         let output = self.runner.run(&repo, &args).await?;
         Ok(text_result(output))
     }
@@ -569,6 +578,7 @@ impl JjServer {
     ) -> Result<CallToolResult, ToolError> {
         let repo = RepoPath::new(&params.repo)?;
         let args = undo_args(&params);
+        let _guard = self.write_queue.lock(&repo).await;
         let output = self.runner.run(&repo, &args).await?;
         Ok(text_result(output))
     }
@@ -585,6 +595,7 @@ impl JjServer {
     ) -> Result<CallToolResult, ToolError> {
         let repo = RepoPath::new(&params.repo)?;
         let args = file_untrack_args(&params)?;
+        let _guard = self.write_queue.lock(&repo).await;
         let output = self.runner.run(&repo, &args).await?;
         Ok(text_result(output))
     }
@@ -601,6 +612,7 @@ impl JjServer {
     ) -> Result<CallToolResult, ToolError> {
         let repo = RepoPath::new(&params.repo)?;
         let args = bookmark_set_args(&params)?;
+        let _guard = self.write_queue.lock(&repo).await;
         let output = self.runner.run(&repo, &args).await?;
         Ok(text_result(output))
     }

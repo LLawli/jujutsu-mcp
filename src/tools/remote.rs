@@ -15,7 +15,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio::time::{Instant, MissedTickBehavior, interval_at};
 
-use crate::jj::JjOutput;
+use crate::jj::{JjOutput, WriteGuard};
 use crate::repo::RepoPath;
 use crate::server::JjServer;
 use crate::tools::{ToolError, non_empty, text_result};
@@ -166,6 +166,20 @@ struct Progress<'a> {
 }
 
 impl JjServer {
+    /// Waits for the repository's write queue, giving up if the client
+    /// cancels first so a cancelled call never runs anything.
+    async fn lock_write(
+        &self,
+        repo: &RepoPath,
+        context: &RequestContext<RoleServer>,
+    ) -> Result<WriteGuard, ToolError> {
+        tokio::select! {
+            biased;
+            () = context.ct.cancelled() => Err(ToolError::Cancelled),
+            guard = self.write_queue.lock(repo) => Ok(guard),
+        }
+    }
+
     /// Runs jj, sending a progress notification every interval when the
     /// client sent a progress token. A client cancellation drops the runner
     /// future, which kills the jj process, and returns `Cancelled`. There is
@@ -277,6 +291,7 @@ impl JjServer {
             interval: self.progress_interval,
             label: "git fetch".to_owned(),
         };
+        let _guard = self.lock_write(&repo, &context).await?;
         let output = self
             .run_watched(&repo, &args, &context, Some(progress))
             .await?;
@@ -302,6 +317,8 @@ impl JjServer {
         let push_args = git_push_args(&params, false)?;
         let dry_args = git_push_args(&params, true)?;
 
+        // Held through dry run, count and push so the count matches what is pushed.
+        let _guard = self.lock_write(&repo, &context).await?;
         let dry_run = self.run_watched(&repo, &dry_args, &context, None).await?;
         reject_unmatched_bookmarks(&dry_run)?;
         let count = self.commits_to_sign(&repo, &dry_run, &context).await?;

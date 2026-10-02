@@ -133,3 +133,57 @@ impl JjRunner {
         }
     }
 }
+
+/// Nearest directory at or above `repo` that holds a `.jj` directory, or
+/// `repo` itself when there is none. Two paths inside one workspace map to
+/// the same root, so they share a write queue.
+pub fn workspace_root(repo: &RepoPath) -> std::path::PathBuf {
+    repo.as_path()
+        .ancestors()
+        .find(|dir| dir.join(".jj").is_dir())
+        .unwrap_or_else(|| repo.as_path())
+        .to_path_buf()
+}
+
+/// One writer per workspace: writes to the same workspace run one at a
+/// time, in arrival order; reads never wait. Clones share the queue.
+///
+/// jj tolerates concurrent operations by recording divergent operations and
+/// merging them, but that shows up as noise in `op_log` for an agent.
+#[derive(Debug, Clone, Default)]
+pub struct WriteQueue {
+    locks: std::sync::Arc<
+        std::sync::Mutex<
+            std::collections::HashMap<std::path::PathBuf, std::sync::Arc<tokio::sync::Mutex<()>>>,
+        >,
+    >,
+}
+
+/// Exclusive write access to one workspace, released on drop.
+#[derive(Debug)]
+pub struct WriteGuard {
+    _guard: tokio::sync::OwnedMutexGuard<()>,
+}
+
+impl WriteQueue {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Waits until no other write to `repo`'s workspace is running.
+    pub async fn lock(&self, repo: &RepoPath) -> WriteGuard {
+        let mutex = {
+            // A poisoned map is still a valid map: the critical section only
+            // inserts, so recover it instead of failing the call.
+            let mut locks = self
+                .locks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            locks.entry(workspace_root(repo)).or_default().clone()
+        };
+        // The map's mutex is released above: it must not be held across this await.
+        WriteGuard {
+            _guard: mutex.lock_owned().await,
+        }
+    }
+}
