@@ -1,6 +1,6 @@
 [package]
 name = "jujutsu-mcp"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "MCP server that lets Claude Code, Codex and Antigravity use jj (Jujutsu) without a shell"
 license = "MIT OR Apache-2.0"
