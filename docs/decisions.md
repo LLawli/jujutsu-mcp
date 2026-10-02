@@ -115,7 +115,18 @@ Each commit signed on push asks for a YubiKey touch. Codex cuts MCP tools at
   signed.
 - When the client sends a `progressToken`, the server emits progress
   notifications while it waits.
+- The count is the commits reachable from the dry run's targets that no
+  remote bookmark reaches yet, ignoring the colocated `git` remote, which
+  mirrors every local bookmark and would make the count zero.
+- jj 0.45.1 exits 0 when asked to push a bookmark that does not exist, with
+  only a `No matching bookmarks for names` warning. `git_push` turns that
+  warning from the dry run into an error before anything is pushed. It
+  depends on the warning's wording; if jj rewords it, the push falls back to
+  jj's own behavior and `push_failure_is_a_tool_error` catches the change.
 - No short server-side timeout; client cancellation kills the jj process.
+  rmcp 3.5 does not drop a handler on cancellation, it only cancels the
+  request's token, so the tool selects on that token and drops the jj
+  future itself.
 - The agent configs raise the tool timeout for this server (Codex
   `tool_timeout_sec = 600`, same for agy).
 

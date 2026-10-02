@@ -1,15 +1,21 @@
 //! The MCP server: tool routing and server info.
 
+use std::time::Duration;
+
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::model::{Implementation, ServerCapabilities, ServerConfig};
 use rmcp::{ServerHandler, tool_handler};
 
 use crate::jj::JjRunner;
 
+/// How often a long call reports progress unless configured otherwise.
+const DEFAULT_PROGRESS_INTERVAL: Duration = Duration::from_secs(2);
+
 #[derive(Debug, Clone)]
 pub struct JjServer {
     pub(crate) runner: JjRunner,
     tool_router: ToolRouter<Self>,
+    pub(crate) progress_interval: Duration,
 }
 
 impl JjServer {
@@ -17,13 +23,20 @@ impl JjServer {
         Self {
             runner,
             tool_router: Self::tool_router(),
+            progress_interval: DEFAULT_PROGRESS_INTERVAL,
         }
     }
 
-    /// Every tool group. Each new group (`remote_router`)
-    /// is added here with `+`.
+    /// Interval between progress notifications while a long jj call
+    /// (`git_fetch`, `git_push`) runs, when the client asked for progress.
+    pub fn with_progress_interval(mut self, interval: Duration) -> Self {
+        self.progress_interval = interval;
+        self
+    }
+
+    /// Every tool group, added here with `+`.
     fn tool_router() -> ToolRouter<Self> {
-        Self::read_router() + Self::write_router()
+        Self::read_router() + Self::write_router() + Self::remote_router()
     }
 }
 

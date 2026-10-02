@@ -2,6 +2,7 @@
 //! execution so argv construction is unit-testable.
 
 pub mod read;
+pub mod remote;
 pub mod write;
 
 use rmcp::handler::server::tool::IntoCallToolResult;
@@ -24,6 +25,9 @@ pub enum ToolError {
     /// `isError: true` carrying argv, exit code and stderr.
     #[error(transparent)]
     Jj(#[from] JjError),
+    /// The client cancelled the call; the jj process was killed.
+    #[error("cancelled by the client")]
+    Cancelled,
     /// jj succeeded but its output did not match the template's shape.
     #[error("could not parse jj output: {0}")]
     Output(#[from] serde_json::Error),

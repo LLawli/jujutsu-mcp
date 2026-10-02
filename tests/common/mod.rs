@@ -215,3 +215,112 @@ pub fn jj_in(cwd: &Path, config: &Path, args: &[&str]) -> String {
     );
     String::from_utf8(output.stdout).expect("utf-8 stdout")
 }
+
+/// A bare git remote and a software SSH signing key, so tests push signed
+/// commits without the hardware key the user's config asks for.
+pub struct SigningRemote {
+    _dir: TempDir,
+    pub bare: PathBuf,
+    pub key: PathBuf,
+    pub allowed_signers: PathBuf,
+}
+
+impl SigningRemote {
+    pub fn new() -> Self {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let root = dir.path().canonicalize().expect("canonicalize temp dir");
+        let bare = root.join("remote.git");
+        run_checked(
+            Command::new("git")
+                .args(["init", "--quiet", "--bare"])
+                .arg(&bare),
+        );
+        let key = root.join("signing_key");
+        run_checked(
+            Command::new("ssh-keygen")
+                .args(["-q", "-t", "ed25519", "-N", "", "-C", "test", "-f"])
+                .arg(&key),
+        );
+        let public = fs::read_to_string(key.with_extension("pub")).expect("public key");
+        let allowed_signers = root.join("allowed_signers");
+        fs::write(&allowed_signers, format!("test@example.com {public}"))
+            .expect("write allowed signers");
+        Self {
+            _dir: dir,
+            bare,
+            key,
+            allowed_signers,
+        }
+    }
+
+    /// jj config that signs every pushed commit with the software key.
+    pub fn jj_config(&self) -> String {
+        format!(
+            r#"
+[signing]
+behavior = "drop"
+backend = "ssh"
+key = "{key}"
+backends.ssh.program = "ssh-keygen"
+backends.ssh.allowed-signers = "{allowed}"
+
+[git]
+sign-on-push = true
+"#,
+            key = self.key.with_extension("pub").display(),
+            allowed = self.allowed_signers.display(),
+        )
+    }
+
+    /// A fresh repository with this remote as `origin`.
+    pub fn repo(&self) -> TestRepo {
+        let repo = TestRepo::with_config(&self.jj_config());
+        let bare = self.bare.to_str().expect("utf-8 path");
+        repo.jj(&["git", "remote", "add", "origin", bare]);
+        repo
+    }
+
+    /// Commit id of branch `name` on the remote, if it exists.
+    pub fn branch(&self, name: &str) -> Option<String> {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(&self.bare)
+            .args(["rev-parse", "--verify", "--quiet"])
+            .arg(format!("refs/heads/{name}"))
+            .output()
+            .expect("git must be on PATH");
+        output
+            .status
+            .success()
+            .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+    }
+
+    /// Whether `commit` on the remote carries a valid signature from the
+    /// test key.
+    pub fn signature_is_valid(&self, commit: &str) -> bool {
+        Command::new("git")
+            .arg("-C")
+            .arg(&self.bare)
+            .arg("-c")
+            .arg(format!(
+                "gpg.ssh.allowedSignersFile={}",
+                self.allowed_signers.display()
+            ))
+            .args(["verify-commit", commit])
+            .output()
+            .expect("git must be on PATH")
+            .status
+            .success()
+    }
+}
+
+fn run_checked(command: &mut Command) {
+    let output = command
+        .output()
+        .unwrap_or_else(|err| panic!("{command:?} could not start: {err}"));
+    assert!(
+        output.status.success(),
+        "{command:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
