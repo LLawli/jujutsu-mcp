@@ -12,7 +12,14 @@ use std::process::Command;
 
 use jujutsu_mcp::jj::JjRunner;
 use jujutsu_mcp::repo::RepoPath;
+use jujutsu_mcp::server::JjServer;
+use rmcp::model::{CallToolRequestParams, CallToolResult, ErrorCode};
+use rmcp::service::{RunningService, ServiceError};
+use rmcp::{RoleClient, ServiceExt};
+use serde_json::Value;
 use tempfile::TempDir;
+
+pub type Client = RunningService<RoleClient, ()>;
 
 const BASE_CONFIG: &str = r#"
 [user]
@@ -73,6 +80,98 @@ impl TestRepo {
     pub fn temp_root(&self) -> &Path {
         self.dir.path()
     }
+
+    /// An MCP client connected to an in-process server using this
+    /// repository's runner.
+    pub async fn client(&self) -> Client {
+        connect(self.runner()).await
+    }
+
+    /// The repo argument every tool takes.
+    pub fn repo_arg(&self) -> Value {
+        Value::String(self.path.to_str().expect("utf-8 path").to_owned())
+    }
+}
+
+/// Serves a [`JjServer`] over an in-memory duplex channel and connects a
+/// client to it.
+pub async fn connect(runner: JjRunner) -> Client {
+    let (server_io, client_io) = tokio::io::duplex(1 << 20);
+    tokio::spawn(async move {
+        let server = JjServer::new(runner)
+            .serve(server_io)
+            .await
+            .expect("server starts");
+        let _ = server.waiting().await;
+    });
+    ().serve(client_io).await.expect("client connects")
+}
+
+/// Calls `tool` with `arguments`, which must be a JSON object.
+pub async fn call(
+    client: &Client,
+    tool: &'static str,
+    arguments: Value,
+) -> Result<CallToolResult, ServiceError> {
+    let Value::Object(arguments) = arguments else {
+        panic!("tool arguments must be a JSON object");
+    };
+    client
+        .call_tool(CallToolRequestParams::new(tool).with_arguments(arguments))
+        .await
+}
+
+/// Calls `tool` and expects a successful structured result, returned as
+/// JSON. Also checks the text copy carries the same JSON.
+pub async fn call_ok(client: &Client, tool: &'static str, arguments: Value) -> Value {
+    let result = call(client, tool, arguments)
+        .await
+        .unwrap_or_else(|err| panic!("{tool} protocol error: {err:?}"));
+    assert_ne!(result.is_error, Some(true), "{tool} failed: {result:?}");
+    let structured = result
+        .structured_content
+        .clone()
+        .unwrap_or_else(|| panic!("{tool} returned no structured content: {result:?}"));
+    let text = text_of(&result);
+    let copy: Value = serde_json::from_str(&text)
+        .unwrap_or_else(|err| panic!("{tool} text copy is not JSON ({err}): {text}"));
+    assert_eq!(
+        copy, structured,
+        "text copy differs from structured content"
+    );
+    structured
+}
+
+/// Calls `tool` and expects a tool result with `isError: true`; returns its
+/// text.
+pub async fn call_tool_error(client: &Client, tool: &'static str, arguments: Value) -> String {
+    let result = call(client, tool, arguments)
+        .await
+        .unwrap_or_else(|err| panic!("{tool} protocol error: {err:?}"));
+    assert_eq!(result.is_error, Some(true), "{tool} succeeded: {result:?}");
+    text_of(&result)
+}
+
+/// Calls `tool` and expects a `-32602` invalid params protocol error;
+/// returns its message.
+pub async fn call_invalid_params(client: &Client, tool: &'static str, arguments: Value) -> String {
+    match call(client, tool, arguments).await {
+        Err(ServiceError::McpError(error)) => {
+            assert_eq!(error.code, ErrorCode::INVALID_PARAMS, "{error:?}");
+            error.message.into_owned()
+        }
+        other => panic!("{tool}: expected invalid params, got {other:?}"),
+    }
+}
+
+/// Concatenated text content of a tool result.
+pub fn text_of(result: &CallToolResult) -> String {
+    result
+        .content
+        .iter()
+        .filter_map(|block| block.as_text().map(|text| text.text.clone()))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub fn jj_in(cwd: &Path, config: &Path, args: &[&str]) -> String {
