@@ -36,3 +36,18 @@ watch it fail, freeze, delegate).
 Not every change is a TDD slice: CI workflows, docs and the changelog are
 edited directly and validated with their own tools (`actionlint` for
 workflows).
+
+# Decisions: measure first, ask only when it is not clear
+
+Non-trivial choices belong to the maintainer, but asking is the last step,
+not the first.
+
+1. **Trivial choices** (naming, local structure, a conventional default):
+   make them and move on.
+2. **Non-trivial choices:** before asking, try the alternatives and measure
+   them (a prototype, a test, a benchmark, an end-to-end run against real
+   jj).
+3. **One is clearly better on the evidence:** use it without asking, and
+   record the evidence in docs/decisions.md.
+4. **Not clear:** ask, with the pros and cons of each option and the
+   measurements behind them. The maintainer chooses.
