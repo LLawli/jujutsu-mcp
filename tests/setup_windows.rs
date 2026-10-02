@@ -71,8 +71,13 @@ impl Fixture {
         self.root.join("cargo").join("bin").join("jujutsu-mcp.exe")
     }
 
+    /// The logged calls, without quotes: Rust quotes a `.cmd` argument that
+    /// holds characters like `~` (as in short 8.3 temp paths), and `%*`
+    /// echoes the quotes the batch file receives.
     fn calls(&self) -> String {
-        fs::read_to_string(self.root.join("home").join("calls.log")).unwrap_or_default()
+        fs::read_to_string(self.root.join("home").join("calls.log"))
+            .unwrap_or_default()
+            .replace('"', "")
     }
 
     fn run(&self) -> String {
