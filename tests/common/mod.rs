@@ -9,6 +9,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use jujutsu_mcp::jj::JjRunner;
 use jujutsu_mcp::repo::RepoPath;
@@ -20,6 +21,9 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 pub type Client = RunningService<RoleClient, ()>;
+
+/// Deadline for one tool call in tests.
+pub const CALL_TIMEOUT: Duration = Duration::from_secs(30);
 
 const BASE_CONFIG: &str = r#"
 [user]
@@ -116,9 +120,12 @@ pub async fn call(
     let Value::Object(arguments) = arguments else {
         panic!("tool arguments must be a JSON object");
     };
-    client
-        .call_tool(CallToolRequestParams::new(tool).with_arguments(arguments))
+    let request = client.call_tool(CallToolRequestParams::new(tool).with_arguments(arguments));
+    // A panic inside a tool handler drops the response instead of failing
+    // the call; without a deadline the test would hang.
+    tokio::time::timeout(CALL_TIMEOUT, request)
         .await
+        .unwrap_or_else(|_| panic!("{tool} did not answer within {CALL_TIMEOUT:?}"))
 }
 
 /// Calls `tool` and expects a successful structured result, returned as

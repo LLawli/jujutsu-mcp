@@ -33,3 +33,17 @@ impl IntoCallToolResult for ToolError {
         Ok(CallToolResult::error(vec![ContentBlock::text(self.to_string())]).into())
     }
 }
+
+/// Result of a text tool: jj's stdout, then its stderr as a second block
+/// when jj wrote anything there (what it did, warnings).
+pub fn text_result(output: crate::jj::JjOutput) -> rmcp::model::CallToolResult {
+    let mut blocks = Vec::new();
+    // An empty stdout block adds nothing; skip it when stderr has the news.
+    if !output.stdout.is_empty() || output.stderr.is_empty() {
+        blocks.push(ContentBlock::text(output.stdout));
+    }
+    if !output.stderr.is_empty() {
+        blocks.push(ContentBlock::text(output.stderr));
+    }
+    CallToolResult::success(blocks)
+}
