@@ -187,3 +187,89 @@ impl WriteQueue {
         }
     }
 }
+
+/// A jj release, compared by (major, minor, patch).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct JjVersion {
+    pub major: u32,
+    pub minor: u32,
+    pub patch: u32,
+}
+
+impl std::fmt::Display for JjVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+/// The jj release the test suite last ran against. An older jj on `PATH`
+/// may lack flags or template keywords the tools use.
+pub const TESTED_JJ_VERSION: JjVersion = JjVersion {
+    major: 0,
+    minor: 45,
+    patch: 1,
+};
+
+/// Parses `jj --version` output such as `jj 0.45.1` or
+/// `jj 0.46.0-3fe1a2b`; build suffixes after the patch number are ignored.
+pub fn parse_jj_version(output: &str) -> Option<JjVersion> {
+    let token = output
+        .trim()
+        .strip_prefix("jj ")?
+        .split_whitespace()
+        .next()?;
+    let release = token.split(['-', '+']).next()?;
+    let mut parts = release.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some(JjVersion {
+        major,
+        minor,
+        patch,
+    })
+}
+
+impl JjRunner {
+    /// Version of the jj this runner starts, from `jj --version`; `None`
+    /// when the output cannot be parsed. Runs outside any repository.
+    pub async fn version(&self) -> Result<Option<JjVersion>, JjError> {
+        let argv = || {
+            vec![
+                self.program.to_string_lossy().into_owned(),
+                "--version".to_owned(),
+            ]
+        };
+        // No GLOBAL_ARGS: `--version` needs none and has no color or pager
+        // output to suppress. The temp dir keeps jj (and the git-only
+        // colocation shim) away from whatever repository the server was
+        // launched in.
+        let output = Command::new(&self.program)
+            .arg("--version")
+            .current_dir(std::env::temp_dir())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .env("JJ_EDITOR", FAILING_EDITOR)
+            .env("EDITOR", FAILING_EDITOR)
+            .envs(self.env.iter().map(|(key, value)| (key, value)))
+            .kill_on_drop(true)
+            .output()
+            .await
+            .map_err(|source| JjError::Spawn {
+                argv: argv(),
+                source,
+            })?;
+        if !output.status.success() {
+            return Err(JjError::Failed {
+                argv: argv(),
+                code: output.status.code(),
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            });
+        }
+        Ok(parse_jj_version(&String::from_utf8_lossy(&output.stdout)))
+    }
+}
