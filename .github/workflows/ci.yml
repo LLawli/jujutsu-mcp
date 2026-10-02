@@ -65,15 +65,46 @@ jobs:
       - name: cargo audit
         run: cargo audit
 
-  build:
-    name: Build (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        # The test suite uses Unix-only fixtures (/proc, shell scripts), so
-        # these platforms build and lint the library and binary only.
-        os: [macos-15, windows-2025]
-    runs-on: ${{ matrix.os }}
+  test-windows:
+    name: Test (Windows)
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # jj from the official zip; ssh-keygen from Git for Windows, which the
+      # signed-push tests use. Same setup the suite was validated with.
+      - name: Install jj
+        shell: pwsh
+        run: |
+          $zip = "$env:RUNNER_TEMP\jj.zip"
+          $dir = "$env:RUNNER_TEMP\jj"
+          Invoke-WebRequest "https://github.com/jj-vcs/jj/releases/download/v$env:JJ_VERSION/jj-v$env:JJ_VERSION-x86_64-pc-windows-msvc.zip" -OutFile $zip
+          Expand-Archive $zip -DestinationPath $dir
+          $dir | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          "C:\Program Files\Git\usr\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - name: Check jj
+        run: jj --version
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      # Suites built on shell-script fixtures are cfg(unix); the rest, plus
+      # tests/setup_windows.rs, run here.
+      - name: Test
+        run: cargo test --locked
+
+  build-macos:
+    name: Build (macOS)
+    # The suite uses Linux-only fixtures (/proc) in places, so macOS builds
+    # and lints the library and binary only.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
 

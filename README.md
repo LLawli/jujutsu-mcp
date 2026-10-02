@@ -40,8 +40,8 @@ curl -fsSL https://github.com/LLawli/jujutsu-mcp/releases/latest/download/jujuts
 ```
 
 Release binaries exist for Linux (x86_64, aarch64), macOS (Apple Silicon,
-Intel) and Windows (x86_64). The Windows build compiles in CI but is not
-tested there, and it is not code-signed, so SmartScreen warns on first run.
+Intel) and Windows (x86_64). The test suite runs on Linux and Windows in CI;
+the Windows binary is not code-signed, so SmartScreen warns on first run.
 
 ### Register it in your agents
 

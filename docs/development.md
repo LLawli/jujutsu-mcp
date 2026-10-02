@@ -5,8 +5,10 @@
 - Rust stable (edition 2024).
 - jj 0.45.1 or newer, git and `ssh-keygen` on `PATH`. The integration tests
   drive the real binaries and fail, never skip, when one is missing.
-- Linux for the full test suite: a few fixtures read `/proc` and run shell
-  scripts. macOS and Windows build in CI without running the tests.
+- Linux for the full test suite. Suites built on shell-script fixtures are
+  `cfg(unix)`; Windows runs the rest plus `tests/setup_windows.rs` (fake
+  `.cmd` agent CLIs), with `ssh-keygen` from Git for Windows on `PATH`. macOS
+  builds in CI without running the tests.
 - [just](https://github.com/casey/just) for the gates.
 
 ## Gates
@@ -15,8 +17,13 @@
 just check   # cargo fmt --check, cargo clippy --all-targets -D warnings, cargo test
 ```
 
-CI runs the same gates on Linux, `cargo audit`, and a clippy plus release build
-on macOS and Windows. Everything must pass before a change lands.
+CI runs the same gates on Linux and on Windows, `cargo audit`, and a clippy
+plus release build on macOS. Everything must pass before a change lands.
+
+On Windows, canonical paths are verbatim (`\\?\C:\...`). jj accepts them as a
+working directory, but git and hand-built paths with `/` or `..` do not, so
+test fixtures that hand paths to git do not canonicalize them, and jj's output
+uses `\` as separator.
 
 ## Layout
 
