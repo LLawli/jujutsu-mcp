@@ -258,3 +258,54 @@ fn already_installed_binary_is_left_in_place() {
         [format!("agy mcp add jj -- {}", installed.display())]
     );
 }
+
+#[test]
+fn the_binary_on_path_is_registered_in_place() {
+    use jujutsu_mcp::setup::{InstallPlan, plan_install};
+    let mut fx = Fixture::with_agents(&["agy"]);
+    let pkg_bin = fx.root.join("pkg/bin");
+    fs::create_dir_all(&pkg_bin).expect("mkdir");
+    let linked = pkg_bin.join("jujutsu-mcp");
+    std::os::unix::fs::symlink(&fx.env.current_exe, &linked).expect("symlink");
+    fx.env.path = std::env::join_paths([fx.root.join("bin"), pkg_bin]).expect("join");
+
+    assert_eq!(plan_install(&fx.env), InstallPlan::InPlace(linked.clone()));
+    let (result, out) = fx.run(&SetupOptions::default());
+    result.unwrap_or_else(|err| panic!("{err}\n{out}"));
+    assert!(!fx.installed().exists(), "copied anyway");
+    assert_eq!(
+        fx.calls(),
+        [format!("agy mcp add jj -- {}", linked.display())]
+    );
+    assert!(out.contains(&linked.display().to_string()), "{out}");
+}
+
+#[test]
+fn another_binary_on_path_is_not_used() {
+    use jujutsu_mcp::setup::{InstallPlan, plan_install};
+    let mut fx = Fixture::with_agents(&["agy"]);
+    let pkg_bin = fx.root.join("pkg/bin");
+    fs::create_dir_all(&pkg_bin).expect("mkdir");
+    let other = pkg_bin.join("jujutsu-mcp");
+    fs::write(&other, "older-binary").expect("write");
+    fs::set_permissions(&other, fs::Permissions::from_mode(0o755)).expect("chmod");
+    fx.env.path = std::env::join_paths([fx.root.join("bin"), pkg_bin]).expect("join");
+
+    assert_eq!(plan_install(&fx.env), InstallPlan::Copy(fx.installed()));
+    fx.run(&SetupOptions::default()).0.expect("setup");
+    assert_eq!(
+        fs::read_to_string(fx.installed()).expect("copied"),
+        "binary-v1"
+    );
+    assert_eq!(
+        fx.calls(),
+        [format!("agy mcp add jj -- {}", fx.installed().display())]
+    );
+}
+
+#[test]
+fn without_jujutsu_mcp_on_path_the_binary_is_copied() {
+    use jujutsu_mcp::setup::{InstallPlan, plan_install};
+    let fx = Fixture::with_agents(&["agy"]);
+    assert_eq!(plan_install(&fx.env), InstallPlan::Copy(fx.installed()));
+}

@@ -271,6 +271,32 @@ pub fn codex_with_timeout(config: &str) -> Result<String, String> {
     Ok(doc.to_string())
 }
 
+/// Where the registered binary comes from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InstallPlan {
+    /// The `jujutsu-mcp` found on `PATH` is the running binary (directly or
+    /// through a symlink, as with Homebrew): register that path, so package
+    /// manager upgrades reach the agents.
+    InPlace(PathBuf),
+    /// Copy the running binary here and register the copy.
+    Copy(PathBuf),
+}
+
+/// Decides between [`InstallPlan::InPlace`] and copying to
+/// [`Environment::install_path`].
+pub fn plan_install(env: &Environment) -> InstallPlan {
+    let on_path = find_in_path("jujutsu-mcp", &env.path).filter(|found| {
+        match (found.canonicalize(), env.current_exe.canonicalize()) {
+            (Ok(found), Ok(current)) => found == current,
+            _ => false,
+        }
+    });
+    match on_path {
+        Some(path) => InstallPlan::InPlace(path),
+        None => InstallPlan::Copy(env.install_path()),
+    }
+}
+
 /// Installs the binary and registers it, reporting each action on `out`.
 pub fn run_setup(
     env: &Environment,
@@ -297,8 +323,24 @@ pub fn run_setup(
         }
     }
 
-    let installed = env.install_path();
-    install_binary(env, &installed, options.dry_run, out)?;
+    let installed = match plan_install(env) {
+        InstallPlan::InPlace(path) => {
+            let verb = if options.dry_run {
+                "would register"
+            } else {
+                "registering"
+            };
+            say(
+                out,
+                format_args!("{verb} the binary in place at {}", path.display()),
+            )?;
+            path
+        }
+        InstallPlan::Copy(path) => {
+            install_binary(env, &path, options.dry_run, out)?;
+            path
+        }
+    };
 
     for (agent, program_path) in &found {
         for step in registration_steps(*agent, &installed) {

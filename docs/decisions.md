@@ -184,10 +184,14 @@ against.
 
 ## Installation: `jujutsu-mcp setup`
 
-`setup` copies the running binary to `<cargo home>/bin/jujutsu-mcp` (where
-`cargo install` puts it, so a build run from `target/` or a downloaded
-binary never ends up registered at a path that `cargo clean` deletes) and
-registers it as the `jj` server in every agent whose CLI is on `PATH`.
+`setup` registers the binary as the `jj` server in every agent whose CLI is
+on `PATH`. When the `jujutsu-mcp` found on `PATH` is the running binary,
+directly or through a symlink (Homebrew's `bin/` entry, `~/.cargo/bin`), that
+path is registered as is, so package-manager upgrades reach the agents.
+Otherwise (a downloaded tarball, a build in `target/`) the binary is copied to
+`<cargo home>/bin/jujutsu-mcp` first, so nothing is ever registered at a path
+that `cargo clean` deletes. mise installs under a versioned directory; after a
+mise upgrade, rerun `setup`.
 
 - Registration goes through each agent's CLI (`claude mcp add -s user`,
   `codex mcp add`, `agy mcp add`), never by editing their files: Claude Code
