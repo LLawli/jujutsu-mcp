@@ -95,6 +95,11 @@ matching as soon as the agent changes directory.
   the exit code, and the verbatim stderr. Invalid parameters are protocol
   errors (`-32602`) raised before execution.
 - stdout carries JSON-RPC only. Logs go to stderr, filtered by `RUST_LOG`.
+- The runner is a value (`JjRunner`) holding the program and extra
+  environment, handed to the server at construction. Tests point it at an
+  isolated `JJ_CONFIG` through it. Setting variables on the process instead
+  would need `unsafe` `set_var` under edition 2024 and would leak between
+  tests running in parallel threads.
 
 ## Long operations: synchronous, prepared
 
