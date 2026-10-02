@@ -57,8 +57,12 @@ pub struct GitPushParams {
 }
 
 /// Summary line that opens every `git_push` result.
+///
+/// It ends with a newline because some MCP clients (Claude Code, observed)
+/// join content blocks with nothing in between, which would glue jj's own
+/// output onto the count ("commits to sign: 2Updated signatures...").
 pub fn commits_to_sign_line(count: usize) -> String {
-    format!("commits to sign: {count}")
+    format!("commits to sign: {count}\n")
 }
 
 pub fn git_fetch_args(params: &GitFetchParams) -> Result<Vec<String>, ToolError> {

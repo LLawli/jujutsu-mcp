@@ -314,6 +314,32 @@ async fn dry_run_counts_commits_missing_from_the_destination_remote() {
     assert_eq!(line, "commits to sign: 2");
 }
 
+/// Some clients join content blocks with nothing in between; the summary
+/// must still be a line of its own.
+#[tokio::test]
+async fn summary_stays_on_its_own_line_when_blocks_are_joined() {
+    let remote = SigningRemote::new();
+    let repo = repo_with_feat(&remote);
+    let client = repo.client().await;
+    let result = common::call(
+        &client,
+        "git_push",
+        json!({ "repo": repo.repo_arg(), "bookmarks": ["feat"] }),
+    )
+    .await
+    .expect("git_push answers");
+    let joined: String = result
+        .content
+        .iter()
+        .filter_map(|block| block.as_text().map(|text| text.text.clone()))
+        .collect();
+    assert_eq!(
+        joined.lines().next(),
+        Some("commits to sign: 1"),
+        "{joined}"
+    );
+}
+
 #[tokio::test]
 async fn push_failure_is_a_tool_error() {
     let remote = SigningRemote::new();

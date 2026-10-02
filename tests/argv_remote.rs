@@ -171,5 +171,5 @@ fn dry_run_with_nothing_to_push() {
 
 #[test]
 fn summary_line() {
-    assert_eq!(commits_to_sign_line(3), "commits to sign: 3");
+    assert_eq!(commits_to_sign_line(3), "commits to sign: 3\n");
 }

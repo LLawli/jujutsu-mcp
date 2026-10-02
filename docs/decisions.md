@@ -108,6 +108,11 @@ matching as soon as the agent changes directory.
   execution error so the model reads the message and corrects the call;
   clients may render protocol errors opaquely. rmcp 3.5 does the same for
   deserialization failures. Protocol errors are left for an unknown tool.
+- Text blocks the server adds (the `commits to sign: N` summary) end with a
+  newline. Claude Code was seen joining a result's content blocks with
+  nothing in between, which glued the summary to jj's first line in 2 of 5
+  real pushes; `summary_stays_on_its_own_line_when_blocks_are_joined`
+  reproduces it.
 - stdout carries JSON-RPC only. Logs go to stderr, filtered by `RUST_LOG`.
 - The runner is a value (`JjRunner`) holding the program and extra
   environment, handed to the server at construction. Tests point it at an
