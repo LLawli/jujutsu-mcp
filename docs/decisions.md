@@ -92,8 +92,13 @@ matching as soon as the agent changes directory.
 - JSON tools declare an `outputSchema` and return `structuredContent`, always
   with a text copy for clients that do not read structured output.
 - A failing jj call is a tool result with `isError: true` carrying the argv,
-  the exit code, and the verbatim stderr. Invalid parameters are protocol
-  errors (`-32602`) raised before execution.
+  the exit code, and the verbatim stderr.
+- Invalid parameters (missing field, relative `repo`, `limit` 0) are also
+  tool results with `isError: true`, raised before anything runs. The MCP
+  spec (2025-11-25, SEP-1303) classifies input validation as a tool
+  execution error so the model reads the message and corrects the call;
+  clients may render protocol errors opaquely. rmcp 3.5 does the same for
+  deserialization failures. Protocol errors are left for an unknown tool.
 - stdout carries JSON-RPC only. Logs go to stderr, filtered by `RUST_LOG`.
 - The runner is a value (`JjRunner`) holding the program and extra
   environment, handed to the server at construction. Tests point it at an

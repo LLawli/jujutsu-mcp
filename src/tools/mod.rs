@@ -13,7 +13,8 @@ use crate::repo::RepoPathError;
 #[derive(Debug, thiserror::Error)]
 pub enum ToolError {
     /// Parameters that are well-formed JSON but invalid for the tool. Raised
-    /// before anything runs; reaches the client as a `-32602` protocol error.
+    /// before anything runs; reaches the client as a tool result with
+    /// `isError: true`.
     #[error("{0}")]
     InvalidParams(String),
     #[error(transparent)]
@@ -29,13 +30,6 @@ pub enum ToolError {
 
 impl IntoCallToolResult for ToolError {
     fn into_call_tool_result(self) -> Result<CallToolResponse, rmcp::ErrorData> {
-        match self {
-            Self::InvalidParams(_) | Self::Repo(_) => {
-                Err(rmcp::ErrorData::invalid_params(self.to_string(), None))
-            }
-            Self::Jj(_) | Self::Output(_) => {
-                Ok(CallToolResult::error(vec![ContentBlock::text(self.to_string())]).into())
-            }
-        }
+        Ok(CallToolResult::error(vec![ContentBlock::text(self.to_string())]).into())
     }
 }

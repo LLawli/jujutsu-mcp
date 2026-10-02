@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{TestRepo, call_invalid_params, call_ok, call_tool_error};
+use common::{TestRepo, call_ok, call_tool_error};
 use serde_json::{Value, json};
 
 /// first <- second (bookmark `feat`) <- @ (empty, undescribed)
@@ -180,11 +180,11 @@ async fn log_rejects_invalid_repo_before_running_jj() {
     let repo = TestRepo::new();
     let client = repo.client().await;
 
-    let message = call_invalid_params(&client, "log", json!({ "repo": "relative/path" })).await;
+    let message = call_tool_error(&client, "log", json!({ "repo": "relative/path" })).await;
     assert!(message.contains("relative/path"), "{message}");
 
     let missing = repo.temp_root().join("missing");
-    let message = call_invalid_params(
+    let message = call_tool_error(
         &client,
         "log",
         json!({ "repo": missing.to_str().expect("utf-8") }),
@@ -192,14 +192,15 @@ async fn log_rejects_invalid_repo_before_running_jj() {
     .await;
     assert!(message.contains("missing"), "{message}");
 
-    call_invalid_params(&client, "log", json!({})).await;
+    let message = call_tool_error(&client, "log", json!({})).await;
+    assert!(message.contains("repo"), "{message}");
 }
 
 #[tokio::test]
 async fn log_rejects_a_zero_limit() {
     let repo = TestRepo::new();
     let client = repo.client().await;
-    let message = call_invalid_params(
+    let message = call_tool_error(
         &client,
         "log",
         json!({ "repo": repo.repo_arg(), "limit": 0 }),

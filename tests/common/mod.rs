@@ -13,7 +13,7 @@ use std::process::Command;
 use jujutsu_mcp::jj::JjRunner;
 use jujutsu_mcp::repo::RepoPath;
 use jujutsu_mcp::server::JjServer;
-use rmcp::model::{CallToolRequestParams, CallToolResult, ErrorCode};
+use rmcp::model::{CallToolRequestParams, CallToolResult};
 use rmcp::service::{RunningService, ServiceError};
 use rmcp::{RoleClient, ServiceExt};
 use serde_json::Value;
@@ -150,18 +150,6 @@ pub async fn call_tool_error(client: &Client, tool: &'static str, arguments: Val
         .unwrap_or_else(|err| panic!("{tool} protocol error: {err:?}"));
     assert_eq!(result.is_error, Some(true), "{tool} succeeded: {result:?}");
     text_of(&result)
-}
-
-/// Calls `tool` and expects a `-32602` invalid params protocol error;
-/// returns its message.
-pub async fn call_invalid_params(client: &Client, tool: &'static str, arguments: Value) -> String {
-    match call(client, tool, arguments).await {
-        Err(ServiceError::McpError(error)) => {
-            assert_eq!(error.code, ErrorCode::INVALID_PARAMS, "{error:?}");
-            error.message.into_owned()
-        }
-        other => panic!("{tool}: expected invalid params, got {other:?}"),
-    }
 }
 
 /// Concatenated text content of a tool result.
