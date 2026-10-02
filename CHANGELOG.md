@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- `git_push` no longer counts commits already on the remote in
+  `commits to sign: N`. In a colocated repository with a synced trunk the
+  count included the whole trunk history.
+
 ## [0.1.0] - 2026-10-02
 
 ### Added

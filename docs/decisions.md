@@ -127,6 +127,14 @@ Each commit signed on push asks for a YubiKey touch. Codex cuts MCP tools at
 - The count is the commits reachable from the dry run's targets that no
   remote bookmark reaches yet, ignoring the colocated `git` remote, which
   mirrors every local bookmark and would make the count zero.
+- The `git` remote is excluded by name, `remote_bookmarks(remote=~exact:"git")`.
+  v0.1.0 subtracted `remote_bookmarks(remote=exact:"git")` from
+  `remote_bookmarks()`, but those are commit sets: a synced trunk has
+  `master@git` and `master@origin` on the same commit, so the trunk tip left
+  the exclusion set and all of `::master` was counted (23 announced, 16
+  signed). jj 0.45.1 accepts the negated pattern; if a supported jj ever
+  rejects it, build the union of `remote_bookmarks(remote=exact:"<name>")`
+  over `jj git remote list` instead.
 - jj 0.45.1 exits 0 when asked to push a bookmark that does not exist, with
   only a `No matching bookmarks for names` warning. `git_push` turns that
   warning from the dry run into an error before anything is pushed. It

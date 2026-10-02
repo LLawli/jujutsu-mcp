@@ -123,8 +123,13 @@ pub fn push_targets(dry_run_output: &str) -> Vec<String> {
 
 /// Revset of the commits a push would send for the first time: reachable
 /// from `targets` but from no bookmark of a real remote. The `git` remote
-/// is excluded because in a colocated repository jj mirrors every local
-/// bookmark there, which would make every commit look already pushed.
+/// is excluded by name (`remote=~exact:"git"`) because in a colocated
+/// repository jj mirrors every local bookmark there, which would make every
+/// commit look already pushed. It has to be a filter on the remote, not a
+/// subtraction of commit sets: `remote_bookmarks()` yields commits, and a
+/// synced trunk has `main@git` and `main@origin` on the same commit, so
+/// subtracting would drop the trunk tip from the exclusion and count all of
+/// its ancestors as unpushed.
 fn unpushed_revset(targets: &[String]) -> String {
     let ids = targets
         .iter()
@@ -134,9 +139,7 @@ fn unpushed_revset(targets: &[String]) -> String {
         })
         .collect::<Vec<_>>()
         .join(" | ");
-    format!(
-        "(::({ids}) ~ ::(remote_bookmarks() ~ remote_bookmarks(remote=exact:\"git\"))) ~ root()"
-    )
+    format!("(::({ids}) ~ ::remote_bookmarks(remote=~exact:\"git\")) ~ root()")
 }
 
 /// jj exits 0 when a requested bookmark does not exist: it warns and pushes

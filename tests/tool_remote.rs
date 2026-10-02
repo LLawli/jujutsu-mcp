@@ -94,6 +94,55 @@ async fn push_with_nothing_new_signs_nothing() {
     assert!(text.starts_with("commits to sign: 0"), "{text}");
 }
 
+/// In a colocated repository a synced trunk has `master@git` and
+/// `master@origin` on the same commit. Commits already on the remote must
+/// not be counted as commits to sign.
+#[tokio::test]
+async fn dry_run_ignores_commits_already_on_the_remote() {
+    let remote = SigningRemote::new();
+    let repo = remote.repo();
+    for name in ["t1", "t2", "t3"] {
+        repo.write(&format!("{name}.txt"), "t\n");
+        repo.jj(&["commit", "-m", name]);
+    }
+    repo.jj(&["bookmark", "create", "master", "-r", "@-"]);
+    let client = repo.client().await;
+    call_text(
+        &client,
+        "git_push",
+        json!({ "repo": repo.repo_arg(), "bookmarks": ["master"] }),
+    )
+    .await;
+
+    repo.write("f1.txt", "f\n");
+    repo.jj(&["commit", "-m", "f1"]);
+    repo.jj(&["bookmark", "create", "feat", "-r", "@-"]);
+    let text = call_text(
+        &client,
+        "git_push",
+        json!({ "repo": repo.repo_arg(), "bookmarks": ["feat"], "dry_run": true }),
+    )
+    .await;
+    assert!(text.starts_with("commits to sign: 1"), "{text}");
+
+    call_text(
+        &client,
+        "git_push",
+        json!({ "repo": repo.repo_arg(), "bookmarks": ["feat"] }),
+    )
+    .await;
+    repo.write("f2.txt", "f\n");
+    repo.jj(&["commit", "-m", "f2"]);
+    repo.jj(&["bookmark", "set", "feat", "-r", "@-"]);
+    let text = call_text(
+        &client,
+        "git_push",
+        json!({ "repo": repo.repo_arg(), "bookmarks": ["feat"], "dry_run": true }),
+    )
+    .await;
+    assert!(text.starts_with("commits to sign: 1"), "{text}");
+}
+
 #[tokio::test]
 async fn push_failure_is_a_tool_error() {
     let remote = SigningRemote::new();
