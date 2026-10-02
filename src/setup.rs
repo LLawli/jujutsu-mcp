@@ -510,7 +510,7 @@ fn set_codex_timeout(
         detail,
     };
     let config = fs::read_to_string(&path).map_err(|err| config_error(err.to_string()))?;
-    let updated = codex_with_timeout(&config).map_err(&config_error)?;
+    let updated = codex_with_timeout(&config).map_err(config_error)?;
     fs::write(&path, updated).map_err(|err| config_error(err.to_string()))?;
     say(
         out,
