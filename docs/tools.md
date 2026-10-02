@@ -56,7 +56,7 @@ All of them are undone with `undo`.
 | `new` | | `parents` (default `@`; several make a merge), `message` |
 | `commit` | | `message`, `paths` (default: everything) |
 | `squash` | | `revision`, or `from`/`into` (default: `@` into `@-`); `paths`; `message` or `use_destination_message`; `keep_emptied` |
-| `split` | | `paths` (go into the first commit), `message` (of the first commit), `revision` (default `@`), `parallel` |
+| `split` | | `paths` (whole files that go into the first commit), `contents` (path to the content it must have in the first commit, to split inside a file), `message` (of the first commit), `revision` (default `@`), `parallel` |
 | `edit` | | `revision` |
 | `rebase` | | at most one of `revisions`, `source`, `branch` (default `branch: "@"`); exactly one of `onto`, `insert_after`, `insert_before`; `skip_emptied` |
 | `restore` | D | `from`/`into`, or `changes_in`; `paths`; `restore_descendants` |

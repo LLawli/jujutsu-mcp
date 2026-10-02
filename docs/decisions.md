@@ -59,7 +59,7 @@ Read (`readOnlyHint`): `status`, `log`, `show`, `diff`, `bookmark_list`,
 `op_log`.
 
 Local write, undoable with `undo`: `describe`, `new`, `commit`, `squash`,
-`split` (by paths, never interactive), `edit`, `rebase`, `restore`
+`split` (by paths or by contents, never interactive), `edit`, `rebase`, `restore`
 (destructive), `abandon` (destructive), `undo`, `file_untrack`,
 `bookmark_set`.
 
@@ -72,6 +72,27 @@ in the server `instructions`, not as a tool.
 
 Reopen if: agents keep falling back to the shell for one of the excluded
 operations.
+
+`split` by contents, added in 0.1.4: jj splits inside a file only through a
+diff editor, so `split` runs this binary (`jujutsu-mcp split-editor`) as a
+non-interactive one that writes the requested contents into `$right`.
+Measured on a real project (python-humanize, two options added to one
+function, sharing lines) against two alternatives:
+
+- Writing the intermediate file by hand, committing, then writing the final
+  file back: works, but took 6 calls on `@` and 7 or more on an older
+  revision (one through `run`, for `new --insert-after`), rewrote the
+  working copy three times, left descendants without the second change
+  while in progress, and tripped over jj abandoning the empty working-copy
+  commit on `edit`.
+- Selecting hunks by number: all 4 hunks mixed both changes, and two single
+  lines held both, so it could not express the split at all.
+- `contents`: one call on `@` and on an older revision, results identical
+  byte for byte, no conflicts, descendants untouched.
+
+The editor is the server's own binary rather than a script so it works on
+Windows. Reopen if: jj gains a non-interactive way to select changes inside
+a file.
 
 Reopened on 2026-10-02, at the user's request, before the first rollout:
 `run` takes a jj argv (`["bookmark", "delete", "old"]`) for anything the

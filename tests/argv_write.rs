@@ -1,5 +1,8 @@
 //! argv construction for write tools, without running jj.
 
+use std::collections::BTreeMap;
+use std::path::Path;
+
 use jujutsu_mcp::tools::ToolError;
 use jujutsu_mcp::tools::write::*;
 
@@ -189,22 +192,24 @@ fn split_shapes() {
         repo: REPO.to_owned(),
         revision: None,
         paths: s(&["a.txt"]),
+        contents: BTreeMap::new(),
         message: "first part".to_owned(),
         parallel: false,
     };
     assert_eq!(
-        split_args(&params).unwrap(),
+        split_args(&params, None).unwrap(),
         s(&["split", "--message=first part", "--", r#"cwd:"a.txt""#])
     );
     let params = SplitParams {
         repo: REPO.to_owned(),
         revision: Some("feat".to_owned()),
         paths: s(&["a.txt", "b"]),
+        contents: BTreeMap::new(),
         message: "first".to_owned(),
         parallel: true,
     };
     assert_eq!(
-        split_args(&params).unwrap(),
+        split_args(&params, None).unwrap(),
         s(&[
             "split",
             "--revision=feat",
@@ -223,10 +228,105 @@ fn split_requires_paths() {
         repo: REPO.to_owned(),
         revision: None,
         paths: Vec::new(),
+        contents: BTreeMap::new(),
         message: "m".to_owned(),
         parallel: false,
     };
-    assert_invalid(split_args(&params), "paths");
+    assert_invalid(split_args(&params, None), "paths");
+}
+
+fn contents(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+    pairs
+        .iter()
+        .map(|(path, text)| ((*path).to_owned(), (*text).to_owned()))
+        .collect()
+}
+
+#[test]
+fn split_with_contents_runs_the_split_editor() {
+    let params = SplitParams {
+        repo: REPO.to_owned(),
+        revision: Some("feat".to_owned()),
+        paths: s(&["a.txt"]),
+        contents: contents(&[("src/b.txt", "b\n"), ("c.txt", "c\n")]),
+        message: "first".to_owned(),
+        parallel: false,
+    };
+    let editor = SplitEditor {
+        program: Path::new("/opt/bin/jujutsu-mcp"),
+        staged: Path::new("/tmp/staged"),
+    };
+    assert_eq!(
+        split_args(&params, Some(editor)).unwrap(),
+        s(&[
+            "split",
+            "--tool=jujutsu-mcp-split",
+            r#"--config=merge-tools.jujutsu-mcp-split.program="/opt/bin/jujutsu-mcp""#,
+            r#"--config=merge-tools.jujutsu-mcp-split.edit-args=["split-editor", "/tmp/staged", "$right"]"#,
+            "--revision=feat",
+            "--message=first",
+            "--",
+            r#"cwd:"a.txt""#,
+            r#"cwd:"c.txt""#,
+            r#"cwd:"src/b.txt""#,
+        ])
+    );
+}
+
+/// Windows paths carry backslashes; the config values are TOML strings.
+#[test]
+fn split_editor_paths_are_toml_escaped() {
+    let params = SplitParams {
+        repo: REPO.to_owned(),
+        revision: None,
+        paths: Vec::new(),
+        contents: contents(&[("a.txt", "a\n")]),
+        message: "m".to_owned(),
+        parallel: false,
+    };
+    let editor = SplitEditor {
+        program: Path::new(r#"C:\Program Files\jj "mcp"\jujutsu-mcp.exe"#),
+        staged: Path::new(r"C:\Temp\staged"),
+    };
+    let args = split_args(&params, Some(editor)).unwrap();
+    assert_eq!(
+        args[2],
+        r#"--config=merge-tools.jujutsu-mcp-split.program="C:\\Program Files\\jj \"mcp\"\\jujutsu-mcp.exe""#
+    );
+    assert_eq!(
+        args[3],
+        r#"--config=merge-tools.jujutsu-mcp-split.edit-args=["split-editor", "C:\\Temp\\staged", "$right"]"#
+    );
+}
+
+#[test]
+fn split_rejects_a_path_in_both_paths_and_contents() {
+    let params = SplitParams {
+        repo: REPO.to_owned(),
+        revision: None,
+        paths: s(&["a.txt"]),
+        contents: contents(&[("a.txt", "a\n")]),
+        message: "m".to_owned(),
+        parallel: false,
+    };
+    let editor = SplitEditor {
+        program: Path::new("/bin/jujutsu-mcp"),
+        staged: Path::new("/tmp/staged"),
+    };
+    assert_invalid(split_args(&params, Some(editor)), "contents");
+}
+
+#[test]
+fn split_with_contents_needs_the_editor() {
+    let params = SplitParams {
+        repo: REPO.to_owned(),
+        revision: None,
+        paths: Vec::new(),
+        contents: contents(&[("a.txt", "a\n")]),
+        message: "m".to_owned(),
+        parallel: false,
+    };
+    assert_invalid(split_args(&params, None), "contents");
 }
 
 #[test]

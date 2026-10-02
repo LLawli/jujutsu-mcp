@@ -1,5 +1,6 @@
 //! The MCP server: tool routing and server info.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use rmcp::handler::server::router::tool::ToolRouter;
@@ -17,6 +18,9 @@ pub struct JjServer {
     pub(crate) write_queue: WriteQueue,
     tool_router: ToolRouter<Self>,
     pub(crate) progress_interval: Duration,
+    /// Program `split` runs as its diff editor for `contents`: this binary
+    /// unless configured otherwise. `None` when it could not be located.
+    pub(crate) split_editor: Option<PathBuf>,
 }
 
 impl JjServer {
@@ -26,7 +30,16 @@ impl JjServer {
             write_queue: WriteQueue::new(),
             tool_router: Self::tool_router(),
             progress_interval: DEFAULT_PROGRESS_INTERVAL,
+            split_editor: std::env::current_exe().ok(),
         }
+    }
+
+    /// Binary `split` runs as its diff editor (`jujutsu-mcp split-editor`).
+    /// Tests, whose server runs inside the test binary, point it at the
+    /// built `jujutsu-mcp`.
+    pub fn with_split_editor(mut self, program: PathBuf) -> Self {
+        self.split_editor = Some(program);
+        self
     }
 
     /// Interval between progress notifications while a long jj call

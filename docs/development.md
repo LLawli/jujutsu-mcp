@@ -37,6 +37,8 @@ src/
   server.rs       JjServer: tool routing and server info
   instructions.md the jj primer sent to clients as MCP instructions
   setup.rs        install and register in Claude Code, Codex and agy
+  split_editor.rs `jujutsu-mcp split-editor`, the diff editor behind
+                  `split` with `contents`
   tools/
     read.rs       status, log, show, diff, bookmark_list, op_log
     write.rs      describe, new, commit, squash, split, edit, rebase,

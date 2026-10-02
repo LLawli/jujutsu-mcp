@@ -14,7 +14,8 @@ How jj differs from git:
   on every rewrite). Refer to commits by change id.
 - Making a commit: edit files, `describe` with the message, then `new` to
   start the next one. `commit` does both, optionally for some paths only.
-- Rewriting is normal and cheap: `squash`, `split` (by paths), `rebase`,
+- Rewriting is normal and cheap: `squash`, `split` (by paths, or inside a
+  file with `contents`), `rebase`,
   `describe` on any mutable revision. Descendants are rebased automatically.
   Commits marked `immutable` in `log` cannot be rewritten.
 - Bookmarks are git branches. They do not move when you commit; move them

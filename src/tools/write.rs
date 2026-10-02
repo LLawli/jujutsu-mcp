@@ -1,5 +1,8 @@
 //! Local write tools. Every one of them is undoable with `undo`.
 
+use std::collections::BTreeMap;
+use std::path::{Component, Path, PathBuf};
+
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
@@ -8,6 +11,7 @@ use serde::Deserialize;
 
 use crate::repo::RepoPath;
 use crate::server::JjServer;
+use crate::split_editor;
 use crate::tools::{ToolError, literal_path_fileset, non_empty, text_result};
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -81,10 +85,18 @@ pub struct SplitParams {
     /// Revision to split. Defaults to `@`.
     #[serde(default)]
     pub revision: Option<String>,
-    /// Paths (relative to `repo`, taken literally) that go into the first
-    /// commit; the rest stays in the second.
+    /// Paths (relative to `repo`, taken literally) whose changes all go
+    /// into the first commit; the rest stays in the second.
+    #[serde(default)]
     pub paths: Vec<String>,
-    /// Description of the first commit. The second keeps the original.
+    /// To split inside a file: for each path (relative to `repo`), the full
+    /// content it must have in the first commit. The rest of its changes
+    /// stay in the second commit, which keeps the revision's content.
+    /// Combines with `paths`; a path cannot be in both.
+    #[serde(default)]
+    pub contents: BTreeMap<String, String>,
+    /// Description of the first commit. The second keeps the original
+    /// description, but the first keeps the revision's change id.
     pub message: String,
     /// Make the two commits siblings instead of parent and child.
     #[serde(default)]
@@ -298,14 +310,114 @@ pub fn squash_args(params: &SquashParams) -> Result<Vec<String>, ToolError> {
     Ok(args)
 }
 
-pub fn split_args(params: &SplitParams) -> Result<Vec<String>, ToolError> {
-    require_paths(&params.paths)?;
+/// The diff editor `split` runs for `contents`: `program` is this binary,
+/// `staged` the directory holding the requested contents, laid out
+/// relative to the workspace root.
+#[derive(Debug, Clone, Copy)]
+pub struct SplitEditor<'a> {
+    pub program: &'a Path,
+    pub staged: &'a Path,
+}
+
+/// argv for `split`. With `contents`, jj runs `editor` as a
+/// non-interactive diff editor; `editor` is required then.
+pub fn split_args(
+    params: &SplitParams,
+    editor: Option<SplitEditor<'_>>,
+) -> Result<Vec<String>, ToolError> {
+    if params.paths.is_empty() && params.contents.is_empty() {
+        return Err(ToolError::InvalidParams(
+            "paths or contents must contain at least one path".to_owned(),
+        ));
+    }
+    if let Some(path) = params
+        .paths
+        .iter()
+        .find(|path| params.contents.contains_key(*path))
+    {
+        return Err(ToolError::InvalidParams(format!(
+            "{path:?} is in both paths and contents; contents already says what the file holds"
+        )));
+    }
     let mut args = vec!["split".to_owned()];
+    if !params.contents.is_empty() {
+        let editor = editor.ok_or_else(|| {
+            ToolError::InvalidParams(
+                "contents needs the jujutsu-mcp binary as its diff editor, and it could not be located"
+                    .to_owned(),
+            )
+        })?;
+        args.push(format!("--tool={SPLIT_TOOL}"));
+        args.push(format!(
+            "--config=merge-tools.{SPLIT_TOOL}.program={}",
+            toml_string(utf8_path("program", editor.program)?)
+        ));
+        args.push(format!(
+            "--config=merge-tools.{SPLIT_TOOL}.edit-args=[{}, {}, \"$right\"]",
+            toml_string(split_editor::COMMAND),
+            toml_string(utf8_path("staged directory", editor.staged)?),
+        ));
+    }
     push_opt(&mut args, "revision", "revision", &params.revision)?;
     args.push(format!("--message={}", params.message));
     push_flag(&mut args, "parallel", params.parallel);
-    push_paths(&mut args, &params.paths)?;
+    let filesets: Vec<&String> = params.paths.iter().chain(params.contents.keys()).collect();
+    args.push("--".to_owned());
+    for path in filesets {
+        args.push(literal_path_fileset(path)?);
+    }
     Ok(args)
+}
+
+/// Name of the merge tool `split` defines on the command line for `contents`.
+const SPLIT_TOOL: &str = "jujutsu-mcp-split";
+
+fn utf8_path<'a>(what: &str, path: &'a Path) -> Result<&'a str, ToolError> {
+    path.to_str().ok_or_else(|| {
+        ToolError::InvalidParams(format!("contents needs a UTF-8 {what}, got {path:?}"))
+    })
+}
+
+/// A TOML basic string: jj reads `--config` values as TOML.
+fn toml_string(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for c in value.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            c if c.is_control() => out.push_str(&format!("\\u{:04X}", u32::from(c))),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// A `contents` key as a path relative to `repo`: non-empty, and made only of
+/// normal components, so it cannot name anything outside `repo`.
+fn contents_path(path: &str) -> Result<&Path, ToolError> {
+    let relative = Path::new(path);
+    let confined = !path.is_empty()
+        && relative
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)));
+    if !confined {
+        return Err(ToolError::InvalidParams(format!(
+            "contents key {path:?} must be a non-empty path relative to repo, without `..`"
+        )));
+    }
+    Ok(relative)
+}
+
+fn staging_error(path: &Path, source: std::io::Error) -> ToolError {
+    ToolError::InvalidParams(format!(
+        "contents could not be staged at {}: {source}",
+        path.display()
+    ))
 }
 
 pub fn edit_args(params: &EditParams) -> Result<Vec<String>, ToolError> {
@@ -409,6 +521,18 @@ pub fn bookmark_set_args(params: &BookmarkSetParams) -> Result<Vec<String>, Tool
     Ok(args)
 }
 
+impl JjServer {
+    /// Canonical workspace root, where jj lays out `$right`.
+    async fn workspace_root(&self, repo: &RepoPath) -> Result<PathBuf, ToolError> {
+        let output = self
+            .runner
+            .run(repo, &["workspace".to_owned(), "root".to_owned()])
+            .await?;
+        let printed = output.stdout.trim_end_matches(['\r', '\n']);
+        std::fs::canonicalize(printed).map_err(|source| staging_error(Path::new(printed), source))
+    }
+}
+
 #[tool_router(router = write_router, vis = "pub(crate)")]
 impl JjServer {
     /// Set the description of a revision (default `@`).
@@ -486,7 +610,9 @@ impl JjServer {
         Ok(text_result(output))
     }
 
-    /// Split a revision in two by paths: `paths` go into the first commit.
+    /// Split a revision in two. `paths` go whole into the first commit; with
+    /// `contents`, a file is split inside, the first commit getting the
+    /// content given for it.
     #[tool(annotations(
         read_only_hint = false,
         destructive_hint = false,
@@ -497,8 +623,56 @@ impl JjServer {
         Parameters(params): Parameters<SplitParams>,
     ) -> Result<CallToolResult, ToolError> {
         let repo = RepoPath::new(&params.repo)?;
-        let args = split_args(&params)?;
+        if params.contents.is_empty() {
+            let args = split_args(&params, None)?;
+            let _guard = self.write_queue.lock(&repo).await;
+            let output = self.runner.run(&repo, &args).await?;
+            return Ok(text_result(output));
+        }
+        // Validate everything before anything is written or run.
+        let relatives = params
+            .contents
+            .keys()
+            .map(|path| contents_path(path))
+            .collect::<Result<Vec<_>, _>>()?;
+        let program = self.split_editor.as_deref();
+        // Fails early, before the queue, on the other invalid combinations.
+        split_args(
+            &params,
+            program.map(|program| SplitEditor {
+                program,
+                staged: Path::new(""),
+            }),
+        )?;
         let _guard = self.write_queue.lock(&repo).await;
+        let root = self.workspace_root(&repo).await?;
+        let prefix = repo
+            .as_path()
+            .strip_prefix(&root)
+            .map_err(|_| {
+                ToolError::InvalidParams(format!(
+                    "contents: {} is not inside the workspace root {}",
+                    repo.as_path().display(),
+                    root.display()
+                ))
+            })?
+            .to_path_buf();
+        // Lives until jj returns: jj runs the editor while it works.
+        let staged = tempfile::tempdir().map_err(|source| staging_error(Path::new(""), source))?;
+        for (relative, content) in relatives.iter().zip(params.contents.values()) {
+            let target = staged.path().join(&prefix).join(relative);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|source| staging_error(parent, source))?;
+            }
+            std::fs::write(&target, content).map_err(|source| staging_error(&target, source))?;
+        }
+        let args = split_args(
+            &params,
+            program.map(|program| SplitEditor {
+                program,
+                staged: staged.path(),
+            }),
+        )?;
         let output = self.runner.run(&repo, &args).await?;
         Ok(text_result(output))
     }

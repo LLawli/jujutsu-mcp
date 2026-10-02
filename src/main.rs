@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use jujutsu_mcp::jj::{JjRunner, TESTED_JJ_VERSION};
 use jujutsu_mcp::server::JjServer;
 use jujutsu_mcp::setup::{Environment, SetupError, parse_setup_args, run_setup};
+use jujutsu_mcp::split_editor::SplitEditorError;
 use rmcp::ServiceExt;
 use rmcp::service::ServerInitializeError;
 use rmcp::transport::stdio;
@@ -28,6 +29,7 @@ fn main() -> ExitCode {
     match args.get(1).map(String::as_str) {
         None => serve(),
         Some("setup") => setup(&args[2..]),
+        Some(jujutsu_mcp::split_editor::COMMAND) => split_editor(&args[2..]),
         Some(other) => {
             eprintln!("jujutsu-mcp: unknown argument: {other}");
             eprintln!("{}", jujutsu_mcp::setup::USAGE);
@@ -48,6 +50,22 @@ fn setup(args: &[String]) -> ExitCode {
         Err(err) => {
             eprintln!("jujutsu-mcp: {err}");
             ExitCode::from(if matches!(err, SetupError::Usage(_)) {
+                2
+            } else {
+                1
+            })
+        }
+    }
+}
+
+/// `jujutsu-mcp split-editor`: the diff editor jj runs for `split` with
+/// `contents`. No tracing and no async runtime, jj waits on it.
+fn split_editor(args: &[String]) -> ExitCode {
+    match jujutsu_mcp::split_editor::run(args) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("jujutsu-mcp: {err}");
+            ExitCode::from(if matches!(err, SplitEditorError::Usage) {
                 2
             } else {
                 1

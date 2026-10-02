@@ -137,6 +137,143 @@ async fn split_by_paths() {
     assert_eq!(repo.changed_files("@"), ["c.txt"]);
 }
 
+/// Content of `path` at `revision`.
+fn file_at(repo: &TestRepo, revision: &str, path: &str) -> String {
+    repo.jj(&["file", "show", "-r", revision, "--", path])
+}
+
+const BEFORE: &str = "one\ntwo\nthree\n";
+const MIDDLE: &str = "ONE\ntwo\nthree\n";
+const AFTER: &str = "ONE\ntwo\nTHREE\n";
+
+/// base (f.txt = BEFORE) <- @ "both" (f.txt = AFTER).
+fn repo_with_two_changes_in_one_file() -> TestRepo {
+    let repo = TestRepo::new();
+    repo.write("f.txt", BEFORE);
+    repo.jj(&["commit", "-m", "base"]);
+    repo.write("f.txt", AFTER);
+    repo.jj(&["describe", "-m", "both"]);
+    repo
+}
+
+#[tokio::test]
+async fn split_by_contents_inside_one_file() {
+    let repo = repo_with_two_changes_in_one_file();
+    let client = repo.client().await;
+    call_text(
+        &client,
+        "split",
+        json!({
+            "repo": repo.repo_arg(),
+            "contents": { "f.txt": MIDDLE },
+            "message": "first line",
+        }),
+    )
+    .await;
+    assert_eq!(repo.description("@-"), "first line\n");
+    assert_eq!(file_at(&repo, "@-", "f.txt"), MIDDLE);
+    assert_eq!(repo.description("@"), "both\n");
+    assert_eq!(file_at(&repo, "@", "f.txt"), AFTER);
+    assert_eq!(fs::read_to_string(repo.path.join("f.txt")).unwrap(), AFTER);
+}
+
+#[tokio::test]
+async fn split_by_contents_of_an_older_revision() {
+    let repo = repo_with_two_changes_in_one_file();
+    repo.jj(&["new"]);
+    repo.write("g.txt", "g\n");
+    repo.jj(&["commit", "-m", "on top"]);
+    let both = repo.change_id("description(exact:\"both\n\")");
+    let client = repo.client().await;
+    call_text(
+        &client,
+        "split",
+        json!({
+            "repo": repo.repo_arg(),
+            "revision": both,
+            "contents": { "f.txt": MIDDLE },
+            "message": "first line",
+        }),
+    )
+    .await;
+    // jj keeps the revision's change id on the first commit.
+    assert_eq!(repo.description(&both), "first line\n");
+    assert_eq!(file_at(&repo, &both, "f.txt"), MIDDLE);
+    let second = "description(exact:\"both\n\")";
+    assert_eq!(file_at(&repo, second, "f.txt"), AFTER);
+    assert_eq!(repo.description("@-"), "on top\n");
+    assert_eq!(file_at(&repo, "@-", "f.txt"), AFTER);
+    assert_eq!(
+        repo.jj(&["log", "--no-graph", "-r", "conflicts()", "-T", "change_id"]),
+        ""
+    );
+}
+
+#[tokio::test]
+async fn split_by_contents_from_a_subdirectory() {
+    let repo = TestRepo::new();
+    repo.write("sub/f.txt", BEFORE);
+    repo.jj(&["commit", "-m", "base"]);
+    repo.write("sub/f.txt", AFTER);
+    let client = repo.client().await;
+    let sub = repo.path.join("sub");
+    call_text(
+        &client,
+        "split",
+        json!({
+            "repo": sub.to_str().expect("utf-8 path"),
+            "contents": { "f.txt": MIDDLE },
+            "message": "first line",
+        }),
+    )
+    .await;
+    assert_eq!(file_at(&repo, "@-", "sub/f.txt"), MIDDLE);
+    assert_eq!(file_at(&repo, "@", "sub/f.txt"), AFTER);
+}
+
+#[tokio::test]
+async fn split_by_paths_and_contents_together() {
+    let repo = repo_with_two_changes_in_one_file();
+    repo.write("g.txt", "g\n");
+    repo.write("h.txt", "h\n");
+    let client = repo.client().await;
+    call_text(
+        &client,
+        "split",
+        json!({
+            "repo": repo.repo_arg(),
+            "paths": ["g.txt"],
+            "contents": { "f.txt": MIDDLE },
+            "message": "first",
+        }),
+    )
+    .await;
+    assert_eq!(repo.changed_files("@-"), ["f.txt", "g.txt"]);
+    assert_eq!(file_at(&repo, "@-", "f.txt"), MIDDLE);
+    assert_eq!(repo.changed_files("@"), ["f.txt", "h.txt"]);
+}
+
+#[tokio::test]
+async fn split_contents_outside_the_repository_is_rejected() {
+    let repo = repo_with_two_changes_in_one_file();
+    let client = repo.client().await;
+    for path in ["../escape.txt", "/etc/passwd"] {
+        let text = call_tool_error(
+            &client,
+            "split",
+            json!({
+                "repo": repo.repo_arg(),
+                "contents": { path: MIDDLE },
+                "message": "first",
+            }),
+        )
+        .await;
+        assert!(text.contains("contents"), "{path}: {text}");
+    }
+    assert_eq!(repo.description("@"), "both\n");
+    assert_eq!(file_at(&repo, "@", "f.txt"), AFTER);
+}
+
 #[tokio::test]
 async fn edit_moves_the_working_copy() {
     let repo = repo_with_base();

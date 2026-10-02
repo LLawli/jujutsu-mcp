@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `split` takes `contents`, the content each file must have in the first
+  commit, to split changes inside a file without an interactive diff editor.
+  It works on any mutable revision and combines with `paths`. The binary
+  gains an internal `split-editor` subcommand that jj runs for it.
+
 ## [0.1.3] - 2026-10-02
 
 ### Fixed

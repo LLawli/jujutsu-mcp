@@ -123,7 +123,10 @@ impl TestRepo {
 pub async fn connect(runner: JjRunner) -> Client {
     let (server_io, client_io) = tokio::io::duplex(1 << 20);
     tokio::spawn(async move {
+        // The server runs inside the test binary; `split` needs the real
+        // binary as its diff editor.
         let server = JjServer::new(runner)
+            .with_split_editor(PathBuf::from(env!("CARGO_BIN_EXE_jujutsu-mcp")))
             .serve(server_io)
             .await
             .expect("server starts");
