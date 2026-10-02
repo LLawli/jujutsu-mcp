@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-02
+
 ### Fixed
 
 - `git_push` no longer counts commits already on the remote in
@@ -33,5 +35,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Codex (with a 600 s tool timeout) and Antigravity.
 - Startup warning when the jj on `PATH` is older than the tested release.
 
-[Unreleased]: https://github.com/LLawli/jujutsu-mcp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/LLawli/jujutsu-mcp/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LLawli/jujutsu-mcp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/LLawli/jujutsu-mcp/releases/tag/v0.1.0
