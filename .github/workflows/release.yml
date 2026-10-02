@@ -190,9 +190,12 @@ jobs:
             --notes-file notes.md \
             --verify-tag
 
+  # Gated on the `CRATES_IO` repo variable; the token lives in the
+  # `CARGO_REGISTRY_TOKEN` secret.
   crates:
     name: Publish to crates.io
     needs: release
+    if: vars.CRATES_IO == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -216,21 +219,19 @@ jobs:
             exit 1
           fi
 
+  # Renders the formula from the archives' checksums and pushes it to the
+  # `homebrew-tap` repo over SSH with a write-scoped deploy key. Gated on the
+  # `HOMEBREW_TAP` repo variable; the key lives in the
+  # `HOMEBREW_TAP_DEPLOY_KEY` secret.
   homebrew:
     name: Update Homebrew tap
     needs: [check-version, release]
+    if: vars.HOMEBREW_TAP == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ env.TAG }}
-          path: source
-
-      - uses: actions/checkout@v5
-        with:
-          repository: LLawli/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: tap
 
       - uses: actions/download-artifact@v4
         with:
@@ -239,21 +240,28 @@ jobs:
 
       - name: Render formula
         run: |
-          mkdir -p tap/Formula
-          source/packaging/homebrew/render-formula.sh \
+          packaging/homebrew/render-formula.sh \
             "${{ needs.check-version.outputs.version }}" artifacts \
-            > tap/Formula/jujutsu-mcp.rb
-          cat tap/Formula/jujutsu-mcp.rb
+            > jujutsu-mcp.rb
+          cat jujutsu-mcp.rb
 
-      - name: Push formula
-        working-directory: tap
+      - name: Push to the tap
+        env:
+          DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          VERSION: ${{ needs.check-version.outputs.version }}
         run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/tap_key
+          chmod 600 ~/.ssh/tap_key
+          # GitHub's published ed25519 host key, pinned instead of trusting
+          # whatever ssh-keyscan returns at runtime.
+          printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' >> ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tap_key -o IdentitiesOnly=yes"
+          git clone "git@github.com:${GITHUB_REPOSITORY_OWNER}/homebrew-tap.git" tap
+          install -D jujutsu-mcp.rb tap/Formula/jujutsu-mcp.rb
+          cd tap
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Formula/jujutsu-mcp.rb
-          if git diff --cached --quiet; then
-            echo "::notice::formula already up to date"
-            exit 0
-          fi
-          git commit -m "jujutsu-mcp ${{ needs.check-version.outputs.version }}"
+          git diff --cached --quiet || git commit -m "jujutsu-mcp $VERSION"
           git push

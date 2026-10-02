@@ -35,10 +35,11 @@ existing tag):
    README, CHANGELOG and licenses, with a `.sha256` next to it.
 4. Creates the GitHub Release with the changelog section, install
    instructions and the checksums.
-5. Publishes to crates.io. A version that is already there is not an error, so
-   a failed release can be rerun.
+5. Publishes to crates.io, when enabled. A version that is already there is
+   not an error, so a failed release can be rerun.
 6. Renders `packaging/homebrew/jujutsu-mcp.rb.in` with the version and the
-   checksums of the archives built in step 3 and pushes it to the tap.
+   checksums of the archives built in step 3 and pushes it to the tap over SSH,
+   when enabled.
 
 The archives are named `jujutsu-mcp-<target>.tar.gz` (`.zip` on Windows), the
 convention mise's GitHub backend recognizes, so `mise use
@@ -46,12 +47,16 @@ github:LLawli/jujutsu-mcp` works without any mise-specific setup.
 
 ## One-time setup
 
-- Repository secrets:
-  - `CARGO_REGISTRY_TOKEN`: a crates.io API token with publish scope.
-  - `HOMEBREW_TAP_TOKEN`: a fine-grained GitHub token with contents write
-    access to `LLawli/homebrew-tap` only.
-- The tap repository `LLawli/homebrew-tap`, which can start empty; the
-  workflow creates `Formula/jujutsu-mcp.rb`.
-- The Windows binary is not code-signed; SmartScreen warns on first run. macOS
-  binaries are not notarized: archives fetched with curl, Homebrew or mise are
-  not quarantined, so Gatekeeper does not block them.
+Publishing to crates.io and Homebrew is opt-in per repository, through
+repository variables, so a release never fails on a channel that is not set
+up yet:
+
+- crates.io: variable `CRATES_IO=true` and secret `CARGO_REGISTRY_TOKEN` (a
+  crates.io API token with publish scope).
+- Homebrew: variable `HOMEBREW_TAP=true` and secret `HOMEBREW_TAP_DEPLOY_KEY`,
+  the private half of an SSH deploy key with write access on
+  `LLawli/homebrew-tap` (the same scheme the other projects in the tap use).
+
+The Windows binary is not code-signed; SmartScreen warns on first run. macOS
+binaries are not notarized: archives fetched with curl, Homebrew or mise are
+not quarantined, so Gatekeeper does not block them.
